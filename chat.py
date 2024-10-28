@@ -27,14 +27,16 @@ async def update_personality_wrapper(ttl: int=3600) -> None:
 
 async def get_personality() -> tuple[dict[str, str|list[dict[str, str]]], ...]:
     if "personalities" not in globals():
-        await update_personality()
+        return ()
 
     return personalities # type: ignore
+
 
 async def remove_images(messages: list[dict[str, str]]) -> list[dict[str, str]]:
     # replace all images with markdown alt text and (maybe) titles
     # ![Alt](http://url/ "title")
     return messages
+
 
 @cached(ttl=3600)
 async def get_summary(messages: list[dict[str, str]]) -> str:
@@ -83,6 +85,7 @@ async def should_respond(messages: list[dict[str, str]]) -> bool:
         return True
 
     return False
+
 
 async def get_response(messages: list[dict[str, str]]) -> str:
     summary = await get_summary(messages)

@@ -1,11 +1,16 @@
 from dotenv import load_dotenv
+import asynctinydb as tinydb
 import os
-from asynctinydb import TinyDB, Modifier
+import chat 
+import asyncio
+
+async def main() -> None:
+    load_dotenv("./config/.env")
+    asyncio.create_task(chat.update_personality_wrapper())
+    while await chat.get_personality() == ():
+        await asyncio.sleep(1)
+
 
 if __name__ == "__main__":
-    load_dotenv("./config/.env")
-    personality_db = TinyDB("./db/personality_db.json")
-    Modifier.Conversion.ExtendedJSON(personality_db)
-
-    
+    asyncio.run(main())
 
