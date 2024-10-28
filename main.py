@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    logging.basicConfig(filename="log", level=logging.INFO)
+    logging.basicConfig(filename="./log/simple_chat.log", level=logging.INFO)
 
     logger.info("Loading default.env")
     load_dotenv("./config/default.env")
@@ -25,7 +25,7 @@ async def main() -> None:
     
     logger.info("Loading chat db")
     chats_db = tinydb.TinyDB("./db/chats.json", access_mode="rb+")
-    
+
     # uses faster json decoder/encoder
     tinydb.Modifier.Conversion.ExtendedJSON(chats_db)
 
