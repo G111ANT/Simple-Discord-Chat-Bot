@@ -69,6 +69,9 @@ if __name__ == "__main__":
         if not respond:
             return
 
+        if message.guild.me.nick != (await chat.get_personality())[0]["user_name"]:
+            await message.guild.me.edit(nick=(await chat.get_personality())[0]["user_name"])
+
         logger.info(f"Responding to \"{message.content}\"")
 
         # type: ignore

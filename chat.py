@@ -85,7 +85,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=GLOBAL_SYSTEM + messages + [{
             "role": "user",
-            "content": "Generate a concise summary the discussions above, highlighting the main points, and key themes."
+            "content": "Generate a concise summary the discussions above, highlighting the main points, and key themes. Only respond with summary, nothing else."
         }],  # type: ignore
         model=os.environ["OPENAI_ROUTER_MODEL"]
     )
@@ -142,7 +142,7 @@ async def get_response(messages: list[dict[str, str]]) -> str:
             "content": f"""{summary_prompt}The last message in the conversion was:
             "{messages[-1]['content']}"
 
-            Would someone need to use reason to respond to this??
+            Would someone need to use advanced reasoning skills to respond to this??
 
             Only respond with YES or NO"""
         }],  # type: ignore
@@ -155,11 +155,13 @@ async def get_response(messages: list[dict[str, str]]) -> str:
         return ""
 
     if "YES" in content:
-        think_response = await get_think_response(messages)
+        logger.info("Thinking")
+        think_response = await get_think_response(messages, os.environ["USE_HOMEMADE_COT"] == "TRUE")
 
         if think_response != "":
             return think_response
 
+    logger.info("Not thinking")
     return await get_chat_response(messages)
 
 
@@ -184,15 +186,18 @@ async def get_CoT(messages: list[dict[str, str]]) -> str:
     if zero_shot_content is None:
         return ""
 
+    # adds extra nonsense
     chat_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=GLOBAL_SYSTEM + [{
             "role": "user",
             "content": f"""{summary_prompt}The last message in this conversion is "{messages[-1]['content']}".
 
             If you had a personality described as "{(await get_personality())[0]['summary']}" how would you summarize:
-            "{zero_shot_content}\""""
+            "{zero_shot_content}\"
+
+            Only respond with summarization, nothing else."""
         }],  # type: ignore
-        model=os.environ["OPENAI_CHAT_MODEL"]
+        model=os.environ["OPENAI_THINK_MODEL"]
     )
 
     chat_content = chat_response.choices[0].message.content

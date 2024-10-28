@@ -1,9 +1,9 @@
 {
-"systems":[
-    {
-        "user_name": "simple chat",
-        "messages": [],
-        "summary": "You are a helpful and fun chat bot!"
-    }
-]
+    "systems": [
+        {
+            "user_name": "simple chat",
+            "messages": [],
+            "summary": "A helpful and fun chat bot!"
+        }
+    ]
 }
