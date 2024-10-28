@@ -7,13 +7,13 @@ import aiofiles
 import ujson
 
 
-async def update_personality(k: int=6) -> list[dict[str, str|list[dict[str, str]]]]:
+async def update_personality(k: int=6) -> tuple[dict[str, str|list[dict[str, str]]], ...]:
     if "personalities" not in globals():
         global personalities
 
     async with aiofiles.open("./config/personality.json", "r") as file:
         personality_json = ujson.load(file)
-        personalities = list(random.choices(personality_json["systems"], k=6)) # type: ignore
+        personalities = tuple(random.choices(personality_json["systems"], k=6)) # type: ignore
         
     return personalities # type: ignore
 
@@ -25,7 +25,7 @@ async def update_personality_wrapper(ttl: int=3600) -> None:
     return
 
 
-async def get_personality() -> list[dict[str, str|list[dict[str, str]]]]:
+async def get_personality() -> tuple[dict[str, str|list[dict[str, str]]], ...]:
     if "personalities" not in globals():
         await update_personality()
 
@@ -118,13 +118,55 @@ async def get_response(messages: list[dict[str, str]]) -> str:
     return await get_chat_response(messages)
 
 
-async def get_think_response(messages: list[dict[str, str]]) -> str:
-    # make question
-    # look up (maybe?)
-    # think (remake cot?) https://www.promptingguide.ai/techniques/zeroshot
-    # chat
+async def get_CoT(messages: list[dict[str, str]]) -> str:
+    # think (remake CoT?) https://www.promptingguide.ai/techniques/zeroshot
+    summary = await get_summary(messages)
 
-    # for now
+    summary_prompt = ""
+    if summary != "":
+        summary_prompt = f"The summary of the conversations is:\n{summary}\n\n"
+    
+    zero_shot_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+        messages={
+            "role": "user", # type: ignore
+            "content": f"""{summary_prompt}
+            
+            Reason through the response to this message "{messages[-1]['content']}".""" # type: ignore
+        }, # type: ignore
+        model=os.environ["OPENAI_THINK_MODEL"]
+    )
+
+    zero_shot_content = zero_shot_response.choices[0].message.content
+
+    if zero_shot_content is None:
+        return ""
+
+    chat_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+        messages={
+            "role": "user", # type: ignore
+            "content": f"""{summary_prompt}The last message in this conversion is "{messages[-1]['content']}".
+            
+            If you had a personality described it as "{(await get_personality())[0]['summary']}" how would you summarize:
+            "{zero_shot_content}\"""" # type: ignore
+        }, # type: ignore
+        model=os.environ["OPENAI_CHAT_MODEL"]
+    )
+
+    chat_content = chat_response.choices[0].message.content
+
+
+    if chat_content is None:
+        return ""
+
+    return chat_content
+
+
+async def get_think_response(messages: list[dict[str, str]], CoT: bool=False) -> str:
+    if CoT:
+        CoT_content = await get_CoT(messages)
+        if CoT_content != "":
+            return CoT_content
+    
     messages_with_systems: list[dict[str, str]] = (await get_personality())[0]["messages"] + messages # type: ignore
 
     response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(

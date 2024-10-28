@@ -1,8 +1,8 @@
 {
-    "systems":[
-        {
-            "messages":[],
-            "summary":""
-        }
-    ]
+"systems":[
+    {
+        "messages":[],
+        "summary":"You are a helpful and fun chat bot!"
+    }
+]
 }
