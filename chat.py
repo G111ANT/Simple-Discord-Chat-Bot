@@ -5,6 +5,8 @@ from asyncio import sleep
 import random
 import aiofiles
 import ujson
+import logging
+logger = logging.getLogger(__name__)
 
 
 async def update_personality(k: int=6) -> tuple[dict[str, str|list[dict[str, str]]], ...]:
