@@ -249,7 +249,9 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
             "role": "user",
             "content": final_prompt
         }],  # type: ignore
-        model=os.environ["SIMPLE_CHAT_THINK_MODEL"]
+        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
+        frequency_penalty=0.25,
+        presence_penalty=0.25
     )
 
     final_content = final_response.choices[0].message.content
