@@ -9,6 +9,7 @@ import re
 from better_profanity import profanity
 from discord.ext import commands
 import aiofiles
+from pylatexenc.latex2text import LatexNodes2Text
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ if __name__ == "__main__":
 
         # type: ignore
         past_messages = await discord_client.get_channel(message.channel.id).history(limit=30).flatten()
-        last_message_time = message.created_at.timestamp()
+        # last_message_time = message.created_at.timestamp()
 
         message_history = []
 
@@ -93,10 +94,10 @@ if __name__ == "__main__":
         for past_messages_iteration in range(len(past_messages)):
             past_message = past_messages[past_messages_iteration]
 
-            if abs(last_message_time-past_message.created_at.timestamp()) / 60 / 60 > 2:
-                break
+            # if abs(last_message_time-past_message.created_at.timestamp()) / 60 / 60 > 2:
+            #     break
 
-            last_message_time = past_message.created_at.timestamp()
+            # last_message_time = past_message.created_at.timestamp()
 
             # if user is a bot then we call it the assistant
             role = "user"
@@ -142,17 +143,32 @@ if __name__ == "__main__":
         logger.info(f"Sent \"{message_history[0]['content']}\" to the AI")
 
         message_response = await chat.clear_text(await chat.get_response(message_history[::-1]))
-        message_response_split = [
-            message_response[i:i + 2000] for i in range(0, len(message_response), 2000)]
+
+        latex_splits = message_response.split("$")
+
+        for latex_split in range(1 if message_response[-1] != "$" else 0, len(latex_splits), 2):
+            latex_splits[latex_split] = LatexNodes2Text().latex_to_text(latex_splits[latex_split]).replace("*", "\\*")
+
+        message_response = "".join(latex_splits)
+
+        message_response_split = [""]
+        for word in message_response.split(" "):
+            if len(word) > 2000:
+               message_response_split += [word[i:i + 2000] for i in range(0, len(word), 2000)] 
+               continue
+
+            if len(message_response_split[-1]) + len(word) > 2000:
+                message_response_split.append("")
+            message_response_split[-1] += " " + word
 
         reply_message = await message.reply(
-            f"{message_response_split[0]}",
+            message_response_split[0].strip(),
             mention_author=True
         )
 
         last_message = reply_message
         for chunk in message_response_split[1:]:
-            last_message = await message.channel.send(chunk, reference=last_message)
+            last_message = await message.channel.send(chunk.strip(), reference=last_message)
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])

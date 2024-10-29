@@ -17,17 +17,20 @@ GLOBAL_SYSTEM = [{
 }]
 
 
+async def model_text_replace(text: str, replace_str: str) -> str:
+    replace_list = replace_str.split(",")
+
+    for i in range(0, len(replace_list), 2):
+        text = text.replace(replace_list[i], replace_list[i + 1])
+
+    return text
+
+
 async def clear_text(string: str) -> str:
     string = profanity.censor(string, "\\*")
     string = (
         string
         .strip()
-        # .replace("*", r"\*")
-        # .replace("_", r"\_")
-        # .replace("#", r"\#")
-        # .replace("-", r"\-")
-        # .replace("`", r"\`")
-        # .replace(">", r"\>")
         .replace("\n", "‎\n")
     )
     return string+"‎"
@@ -82,6 +85,9 @@ async def remove_images(messages: list[dict[str, str]]) -> list[dict[str, str]]:
 
 @cached(ttl=3600)
 async def get_summary(messages: list[dict[str, str]]) -> str:
+    if len(messages) < 2:
+        return ""
+
     response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=GLOBAL_SYSTEM + messages + [{
             "role": "user",
@@ -185,7 +191,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
 
     base_content_filtered: list[str] = list(
         filter(lambda x: x is not None, base_content))
-
+    
     if len(base_content_filtered) == 0:
         return ""
 
@@ -243,7 +249,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     if final_content is None:
         return ""
 
-    return final_content
+    return await model_text_replace(final_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])
 
 
 async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) -> str:
@@ -266,7 +272,7 @@ async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) 
     if content is None:
         return ""
 
-    return content
+    return await model_text_replace(content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])
 
 
 async def get_chat_response(messages: list[dict[str, str]]) -> str:
@@ -284,4 +290,4 @@ async def get_chat_response(messages: list[dict[str, str]]) -> str:
     if content is None:
         return ""
 
-    return content
+    return await model_text_replace(content, os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"])
