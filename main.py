@@ -97,15 +97,16 @@ if __name__ == "__main__":
                 role = "assistant"
 
             content = past_message.content
+
+            content = content.rstrip(f"<@{discord_client.application_id}> ")
+
             mentions = re.findall("<@[0-9]+>", content)
             for mention in mentions:
                 mention_id = int(re.findall("[0-9]+", mention)[0])
                 if mention_id == discord_client.application_id:
-                    if content.startswith(mention):
-                        content = content[len(mention):]
-                    else:
-                        content = re.sub("<@[0-9]+>", "assistant", content)
-                if mention_id == message.author.id:
+                    content = re.sub("<@[0-9]+>", "assistant", content)
+
+                elif mention_id == message.author.id:
                     content = re.sub("<@[0-9]+>", "user", content)
                 else:
                     at_user = await discord_client.fetch_user(mention_id)
