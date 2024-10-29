@@ -228,7 +228,8 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     Critiques of all candidates:
     {critiques_content}
 
-    Please provide your critique for each candidate:"""
+    Please provide a final, optimized response to the original query:
+    """
 
     final_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=(await get_personality())[0]["messages"] + [{
