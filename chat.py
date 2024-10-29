@@ -177,7 +177,8 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     base_responses = [await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=(
             await get_personality())[0]["messages"] + messages,  # type: ignore
-        model=os.environ["OPENAI_THINK_MODEL"]
+        model=os.environ["OPENAI_THINK_MODEL"],
+        temperature=0.1
     ) for _ in range(n)]
 
     base_content = [

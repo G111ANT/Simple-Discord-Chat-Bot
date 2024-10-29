@@ -132,7 +132,7 @@ if __name__ == "__main__":
             if len(message_history[message_index]["content"]) == 0:
                 message_history.pop(message_index)
 
-        logger.info(f"Sent \"{message.content}\" to the AI")
+        logger.info(f"Sent \"{message_history[0]['content']}\" to the AI")
 
         _reply_message = await message.reply(
             f"{await chat.clear_text(await chat.get_response(message_history[::-1]))} ..."[:2000],
