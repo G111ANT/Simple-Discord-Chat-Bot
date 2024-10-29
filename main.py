@@ -64,7 +64,7 @@ if __name__ == "__main__":
     @discord_client.event
     async def on_message(message):
         respond = False
-        if discord_client.application_id in map(lambda x: x.id, message.mentions):
+        if message.author.id != discord_client.application_id and discord_client.application_id in map(lambda x: x.id, message.mentions):
             respond = True
 
         if not respond:
@@ -87,7 +87,8 @@ if __name__ == "__main__":
         message_history = []
 
         # estimate of token count
-        history_max_char = (float(os.environ["MAX_TOKENS"]) // 4) * 3
+        history_max_char = (
+            float(os.environ["SIMPLE_CHAT_MAX_TOKENS"]) // 4) * 3
 
         for past_messages_iteration in range(len(past_messages)):
             past_message = past_messages[past_messages_iteration]
@@ -104,7 +105,7 @@ if __name__ == "__main__":
 
             content = past_message.content
 
-            content = content.rstrip(f"<@{discord_client.application_id}> ")
+            content = content.lstrip(f"<@{discord_client.application_id}> ")
 
             mentions = re.findall("<@[0-9]+>", content)
             for mention in mentions:
@@ -146,11 +147,12 @@ if __name__ == "__main__":
 
         reply_message = await message.reply(
             f"{message_response_split[0]}",
-            mention_author=mention
+            mention_author=True
         )
 
+        last_message = reply_message
         for chunk in message_response_split[1:]:
-            await message.channel.send(chunk, reference=reply_message)
+            last_message = await message.channel.send(chunk, reference=last_message)
 
     logger.info("Starting discord bot")
-    discord_client.run(os.environ["DISCORD_API_KEY"])
+    discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])

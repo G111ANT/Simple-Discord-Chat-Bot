@@ -82,12 +82,12 @@ async def remove_images(messages: list[dict[str, str]]) -> list[dict[str, str]]:
 
 @cached(ttl=3600)
 async def get_summary(messages: list[dict[str, str]]) -> str:
-    response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+    response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=GLOBAL_SYSTEM + messages + [{
             "role": "user",
-            "content": "Generate a concise summary the discussions above, highlighting the main points, and key themes. Only respond with summary, nothing else."
+            "content": "Generate a concise summary of the discussions above, highlighting the main points, and key themes. Write the summary here:"
         }],  # type: ignore
-        model=os.environ["OPENAI_ROUTER_MODEL"]
+        model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"]
     )
 
     content = response.choices[0].message.content
@@ -105,7 +105,7 @@ async def should_respond(messages: list[dict[str, str]]) -> bool:
     if summary != "":
         summary_prompt = f"The summary of the conversations is:\n{summary}\n\n"
 
-    response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+    response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=GLOBAL_SYSTEM + [{
             "role": "user",
             "content": f"""{summary_prompt}The last message in the conversations was:
@@ -115,7 +115,7 @@ async def should_respond(messages: list[dict[str, str]]) -> bool:
 
             Only respond with YES or NO"""
         }],  # type: ignore
-        model=os.environ["OPENAI_ROUTER_MODEL"]
+        model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"]
     )
 
     content = response.choices[0].message.content
@@ -136,7 +136,7 @@ async def get_response(messages: list[dict[str, str]]) -> str:
     if summary != "":
         summary_prompt = f"The summary of the conversations is:\n{summary}\n\n"
 
-    response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+    response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=GLOBAL_SYSTEM + [{
             "role": "user",
             "content": f"""{summary_prompt}The last message in the conversion was:
@@ -146,7 +146,7 @@ async def get_response(messages: list[dict[str, str]]) -> str:
 
             Only respond with YES or NO"""
         }],  # type: ignore
-        model=os.environ["OPENAI_ROUTER_MODEL"]
+        model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"]
     )
 
     content = response.choices[0].message.content
@@ -156,7 +156,7 @@ async def get_response(messages: list[dict[str, str]]) -> str:
 
     if "YES" in content:
         logger.info("Thinking")
-        think_response = await get_think_response(messages, os.environ["USE_HOMEMADE_COT"] == "TRUE")
+        think_response = await get_think_response(messages, os.environ["SIMPLE_CHAT_USE_HOMEMADE_COT"] == "TRUE")
 
         if think_response != "":
             return think_response
@@ -174,10 +174,9 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     if summary != "":
         summary_prompt = f"The summary of the conversations is: {summary}\n"
 
-    base_responses = [await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
-        messages=(
-            await get_personality())[0]["messages"] + messages,  # type: ignore
-        model=os.environ["OPENAI_THINK_MODEL"],
+    base_responses = [await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
+        messages=GLOBAL_SYSTEM + messages,  # type: ignore
+        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
         temperature=0.9
     ) for _ in range(n)]
 
@@ -202,12 +201,12 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
 
     critique_prompt += "\nPlease provide your critique for each candidate here:"
 
-    critique_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
-        messages=(await get_personality())[0]["messages"] + [{
+    critique_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
+        messages=GLOBAL_SYSTEM + [{
             "role": "user",
             "content": critique_prompt
         }],  # type: ignore
-        model=os.environ["OPENAI_THINK_MODEL"]
+        model=os.environ["SIMPLE_CHAT_THINK_MODEL"]
     )
 
     critiques_content = critique_response.choices[0].message.content
@@ -231,12 +230,12 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
 
     Please provide a final, optimized response to the original query here:"""
 
-    final_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+    final_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=(await get_personality())[0]["messages"] + [{
             "role": "user",
             "content": final_prompt
         }],  # type: ignore
-        model=os.environ["OPENAI_THINK_MODEL"]
+        model=os.environ["SIMPLE_CHAT_THINK_MODEL"]
     )
 
     final_content = final_response.choices[0].message.content
@@ -257,9 +256,9 @@ async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) 
         await get_personality()
     )[0]["messages"] + messages  # type: ignore
 
-    response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+    response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=messages_with_systems,  # type: ignore
-        model=os.environ["OPENAI_THINK_MODEL"]
+        model=os.environ["SIMPLE_CHAT_THINK_MODEL"]
     )
 
     content = response.choices[0].message.content
@@ -275,9 +274,9 @@ async def get_chat_response(messages: list[dict[str, str]]) -> str:
         await get_personality()
     )[0]["messages"] + messages  # type: ignore
 
-    response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+    response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=messages_with_systems,  # type: ignore
-        model=os.environ["OPENAI_CHAT_MODEL"]
+        model=os.environ["SIMPLE_CHAT_CHAT_MODEL"]
     )
 
     content = response.choices[0].message.content
