@@ -1,2 +1,2 @@
-- [ ] Add latex (pylatexenc)
+- [x] Add latex (pylatexenc)
 - [ ] Add images description
