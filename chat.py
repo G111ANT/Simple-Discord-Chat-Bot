@@ -207,7 +207,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     for completions in range(len(base_content_filtered)):
         critique_prompt += f"""
         Candidate {completions + 1}:
-        {base_content_filtered[completions]}
+        {await model_text_replace(base_content_filtered[completions], os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])}
         """
 
     critique_prompt += "\nPlease provide your critique for each candidate here:"
@@ -232,12 +232,12 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     for completions in range(len(base_content_filtered)):
         final_prompt += f"""
         Candidate {completions + 1}:
-        {base_content_filtered[completions]}
+        {await model_text_replace(base_content_filtered[completions], os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])}
         """
 
     final_prompt += f"""
     Critiques of all candidates:
-    {critiques_content}
+    {await model_text_replace(critiques_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])}
 
     Please provide only a final, optimized response to the original query here:
     """
@@ -249,7 +249,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
             "role": "user",
             "content": final_prompt
         }],  # type: ignore
-        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
+        model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
         frequency_penalty=0.25,
         presence_penalty=0.25
     )
@@ -259,7 +259,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     if final_content is None:
         return ""
 
-    return await model_text_replace(final_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])
+    return await model_text_replace(final_content, os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"])
 
 
 async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) -> str:
