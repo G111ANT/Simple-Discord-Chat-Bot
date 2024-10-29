@@ -165,47 +165,86 @@ async def get_response(messages: list[dict[str, str]]) -> str:
     return await get_chat_response(messages)
 
 
-async def get_CoT(messages: list[dict[str, str]]) -> str:
+async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     # think (remake CoT?) https://www.promptingguide.ai/techniques/zeroshot
     summary = await get_summary(messages)
 
     summary_prompt = ""
     if summary != "":
-        summary_prompt = f"The summary of the conversations is:\n{summary}\n\n"
+        summary_prompt = f"The summary of the conversations is: {summary}\n"
 
-    zero_shot_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
-        messages=GLOBAL_SYSTEM + [{
+    base_responses = [await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+        messages=(await get_personality())[0]["messages"] + [{
             "role": "user",
             "content": f"{summary_prompt}Reason through the response to this message \"{messages[-1]['content']}\"."
         }],  # type: ignore
         model=os.environ["OPENAI_THINK_MODEL"]
-    )
+    ) for _ in range(n)]
 
-    zero_shot_content = zero_shot_response.choices[0].message.content
+    base_content = [
+        base_response.choices[0].message.content for base_response in base_responses]
 
-    if zero_shot_content is None:
+    base_content_filtered: list[str] = list(
+        filter(lambda x: x is not None, base_content))
+
+    if len(base_content_filtered) == 0:
         return ""
 
-    # adds extra nonsense
-    chat_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
-        messages=GLOBAL_SYSTEM + [{
+    critique_prompt = f"""{summary_prompt}Original query: {messages[-1]['content']}
+
+    I will present you with three candidate responses to the original query. Please analyze and critique each response, discussing their strengths and weaknesses. Provide your analysis for each candidate separately."""
+
+    for completions in range(len(base_content_filtered)):
+        critique_prompt += f"""
+        Candidate {completions + 1}:
+        {base_content_filtered[completions]}
+        """
+
+    critique_prompt += "\nPlease provide your critique for each candidate:"
+
+    critique_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+        messages=(await get_personality())[0]["messages"] + [{
             "role": "user",
-            "content": f"""{summary_prompt}The last message in this conversion is "{messages[-1]['content']}".
-
-            If you had a personality described as "{(await get_personality())[0]['summary']}" how would you summarize:
-            "{zero_shot_content}\"
-
-            Only respond with summarization, nothing else."""
+            "content": critique_prompt
         }],  # type: ignore
         model=os.environ["OPENAI_THINK_MODEL"]
     )
 
-    chat_content = chat_response.choices[0].message.content
+    critiques_content = critique_response.choices[0].message.content
 
-    if chat_content is None:
+    if critiques_content is None:
         return ""
 
-    return chat_content
+    final_prompt = f"""{summary_prompt}Original query: {messages[-1]['content']}
+
+    I will present you with three candidate responses to the original query. Please analyze and critique each response, discussing their strengths and weaknesses. Provide your analysis for each candidate separately."""
+
+    for completions in range(len(base_content_filtered)):
+        final_prompt += f"""
+        Candidate {completions + 1}:
+        {base_content_filtered[completions]}
+        """
+
+    final_prompt += f"""
+    Critiques of all candidates:
+    {critiques_content}
+
+    Please provide your critique for each candidate:"""
+
+    final_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
+        messages=(await get_personality())[0]["messages"] + [{
+            "role": "user",
+            "content": final_prompt
+        }],  # type: ignore
+        model=os.environ["OPENAI_THINK_MODEL"]
+    )
+
+    final_content = final_response.choices[0].message.content
+
+    if final_content is None:
+        return ""
+
+    return final_content
 
 
 async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) -> str:
@@ -214,8 +253,9 @@ async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) 
         if CoT_content != "":
             return CoT_content
 
-    # type: ignore
-    messages_with_systems: list[dict[str, str]] = (await get_personality())[0]["messages"] + messages
+    messages_with_systems: list[dict[str, str]] = (
+        await get_personality()
+    )[0]["messages"] + messages  # type: ignore
 
     response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=messages_with_systems,  # type: ignore
@@ -231,8 +271,9 @@ async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) 
 
 
 async def get_chat_response(messages: list[dict[str, str]]) -> str:
-    # type: ignore
-    messages_with_systems: list[dict[str, str]] = (await get_personality())[0]["messages"] + messages
+    messages_with_systems: list[dict[str, str]] = (
+        await get_personality()
+    )[0]["messages"] + messages  # type: ignore
 
     response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=messages_with_systems,  # type: ignore
