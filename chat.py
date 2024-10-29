@@ -167,6 +167,7 @@ async def get_response(messages: list[dict[str, str]]) -> str:
 
 async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     # think (remake CoT?) https://www.promptingguide.ai/techniques/zeroshot
+    # https://github.com/codelion/optillm/blob/main/optillm/moa.py
     summary = await get_summary(messages)
 
     summary_prompt = ""
@@ -174,10 +175,8 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
         summary_prompt = f"The summary of the conversations is: {summary}\n"
 
     base_responses = [await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
-        messages=(await get_personality())[0]["messages"] + [{
-            "role": "user",
-            "content": f"{summary_prompt}Reason through the response to this message \"{messages[-1]['content']}\"."
-        }],  # type: ignore
+        messages=(
+            await get_personality())[0]["messages"] + messages,  # type: ignore
         model=os.environ["OPENAI_THINK_MODEL"]
     ) for _ in range(n)]
 
