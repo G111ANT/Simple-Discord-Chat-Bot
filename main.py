@@ -46,7 +46,8 @@ if __name__ == "__main__":
     discord_intents.message_content = True
     discord_intents.messages = True
 
-    # why? https://stackoverflow.com/questions/46727787/runtimeerror-there-is-no-current-event-loop-in-thread-in-async-apscheduler
+    # I know why, but why?
+    # https://stackoverflow.com/questions/46727787/runtimeerror-there-is-no-current-event-loop-in-thread-in-async-apscheduler
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError as e:

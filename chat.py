@@ -18,6 +18,7 @@ GLOBAL_SYSTEM = [{
 
 
 async def model_text_replace(text: str, replace_str: str) -> str:
+    logger.info(f"Replacing text from model {text}.")
     replace_list = replace_str.split(",")
 
     for i in range(0, len(replace_list), 2):
@@ -27,6 +28,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
 
 
 async def clear_text(string: str) -> str:
+    logger.info(f"Cleaning text {string}.")
     string = profanity.censor(string, "\\*")
     string = (
         string
@@ -101,6 +103,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     if content is None:
         return ""
 
+    logger.info(f"Summary: {content}")
     return content
 
 
@@ -130,8 +133,10 @@ async def should_respond(messages: list[dict[str, str]]) -> bool:
         return False
 
     if "YES" in content:
+        logger.info("Should respond")
         return True
 
+    logger.info("Should not respond")
     return False
 
 
@@ -216,7 +221,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     )
 
     critiques_content = critique_response.choices[0].message.content
-
+    
     if critiques_content is None:
         return ""
 
@@ -234,7 +239,10 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     Critiques of all candidates:
     {critiques_content}
 
-    Please provide only a final, optimized response to the original query here:"""
+    Please provide only a final, optimized response to the original query here:
+    """
+
+    logger.info(f"Final prompt: {final_prompt}")
 
     final_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=(await get_personality())[0]["messages"] + [{
