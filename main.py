@@ -134,10 +134,17 @@ if __name__ == "__main__":
 
         logger.info(f"Sent \"{message_history[0]['content']}\" to the AI")
 
-        _reply_message = await message.reply(
-            f"{await chat.clear_text(await chat.get_response(message_history[::-1]))} ..."[:2000],
+        message_response = await chat.clear_text(await chat.get_response(message_history[::-1]))
+        message_response_split = [
+            message_response[i:i + 2000] for i in range(0, len(message_response), 2000)]
+
+        reply_message = await message.reply(
+            f"{message_response_split[0]}",
             mention_author=mention
         )
 
+        for chunk in message_response_split[1:]:
+            await message.channel.send(chunk, reference=reply_message)
+            
     logger.info("Starting discord bot")
     discord_client.run(os.environ["DISCORD_API_KEY"])

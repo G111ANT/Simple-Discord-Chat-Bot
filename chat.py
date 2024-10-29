@@ -178,7 +178,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
         messages=(
             await get_personality())[0]["messages"] + messages,  # type: ignore
         model=os.environ["OPENAI_THINK_MODEL"],
-        temperature=0.1
+        temperature=0.9
     ) for _ in range(n)]
 
     base_content = [
@@ -200,7 +200,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
         {base_content_filtered[completions]}
         """
 
-    critique_prompt += "\nPlease provide your critique for each candidate:"
+    critique_prompt += "\nPlease provide your critique for each candidate here:"
 
     critique_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=(await get_personality())[0]["messages"] + [{
@@ -229,8 +229,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     Critiques of all candidates:
     {critiques_content}
 
-    Please provide a final, optimized response to the original query:
-    """
+    Please provide a final, optimized response to the original query here:"""
 
     final_response = await AsyncClient(api_key=os.environ["OPENAI_KEY"], base_url=os.environ["OPENAI_BASE_URL"]).chat.completions.create(
         messages=(await get_personality())[0]["messages"] + [{
