@@ -8,8 +8,9 @@ import discord
 import re
 from better_profanity import profanity
 from discord.ext import commands
-logger = logging.getLogger(__name__)
+import aiofiles
 
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -70,7 +71,12 @@ if __name__ == "__main__":
             return
 
         if message.guild.me.nick != (await chat.get_personality())[0]["user_name"]:
-            await message.guild.me.edit(nick=(await chat.get_personality())[0]["user_name"])
+            try:
+                await message.guild.me.edit(nick=(await chat.get_personality())[0]["user_name"])
+                async with aiofiles.open((await chat.get_personality())[0]["image"], "rb") as file:
+                    await discord_client.user.edit(avatar=await file.read())
+            except Exception as e:
+                logger.info(f"{e}")
 
         logger.info(f"Responding to \"{message.content}\"")
 
@@ -145,6 +151,6 @@ if __name__ == "__main__":
 
         for chunk in message_response_split[1:]:
             await message.channel.send(chunk, reference=reply_message)
-            
+
     logger.info("Starting discord bot")
     discord_client.run(os.environ["DISCORD_API_KEY"])
