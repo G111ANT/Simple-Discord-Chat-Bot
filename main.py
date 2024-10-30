@@ -9,6 +9,7 @@ import re
 from better_profanity import profanity
 from discord.ext import commands
 import aiofiles
+import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -81,57 +82,9 @@ if __name__ == "__main__":
 
         logger.info(f"Responding to \"{message.content}\"")
 
-        # type: ignore
-        past_messages = await discord_client.get_channel(message.channel.id).history(limit=30).flatten()
-        # last_message_time = message.created_at.timestamp()
+        past_messages = await message.channel.history(before=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
 
-        message_history = []
-
-        # estimate of token count
-        history_max_char = (
-            float(os.environ["SIMPLE_CHAT_MAX_TOKENS"]) // 4) * 3
-
-        for past_messages_iteration in range(len(past_messages)):
-            past_message = past_messages[past_messages_iteration]
-
-            # if abs(last_message_time-past_message.created_at.timestamp()) / 60 / 60 > 2:
-            #     break
-
-            # last_message_time = past_message.created_at.timestamp()
-
-            # if user is a bot then we call it the assistant
-            role = "user"
-            if past_message.author.bot:
-                role = "assistant"
-
-            content = past_message.content
-
-            content = content.lstrip(f"<@{discord_client.application_id}> ")
-
-            mentions = re.findall("<@[0-9]+>", content)
-            for mention in mentions:
-                mention_id = int(re.findall("[0-9]+", mention)[0])
-                if mention_id == discord_client.application_id:
-                    content = re.sub("<@[0-9]+>", "assistant", content)
-
-                elif mention_id == message.author.id:
-                    content = re.sub("<@[0-9]+>", "user", content)
-                else:
-                    at_user = await discord_client.fetch_user(mention_id)
-                    content = re.sub(
-                        "<@[0-9]+>", at_user.display_name, content)
-
-            content = profanity.censor(content, censor_char="\\*").strip()
-
-            history_max_char -= len(content) + len(role)
-            if history_max_char < 0:
-                break
-
-            message_history.append({
-                "role": role,
-                "content": content,
-                "name": past_message.author.display_name
-            })
+        message_history = await chat.messages_from_history(past_messages, message.created_at.timestamp(), discord_client, message.author.id)
 
         if len(message_history) == 0:
             return
@@ -184,6 +137,31 @@ if __name__ == "__main__":
         )))
 
         logger.info(f"Answer is \"{message_response}\"")
+        await interaction.respond(message_response)
+
+    @discord_client.slash_command(name="summary")
+    async def summary(interaction: discord.Interaction):
+        logger.info("Creating summary")
+        await interaction.response.defer(ephemeral=True)
+
+        for _ in range(3):
+            channel = interaction.channel
+            if channel is not None:
+                break
+            await asyncio.sleep(3)
+
+        if channel is None:
+            return
+
+        past_messages = await channel.history(before=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
+
+        message_history = await chat.messages_from_history(past_messages, past_messages[0].created_at.timestamp(), discord_client, 0)
+
+        message_response = await chat.remove_latex(await chat.clear_text(await chat.get_summary(
+            message_history
+        )))
+
+        logger.info(f"Summary is \"{message_response}\"")
         await interaction.respond(message_response)
 
     logger.info("Starting discord bot")
