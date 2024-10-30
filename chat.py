@@ -38,23 +38,25 @@ async def clear_text(string: str) -> str:
     return string+"‎"
 
 
+def non_async_get_personalties() -> tuple[dict[str, str | list[dict[str, str]]], ...]:
+    with open("./config/personality.json", "r") as file:
+        return tuple(ujson.loads(file.read())["systems"])
+
+
+async def get_personalties() -> tuple[dict[str, str | list[dict[str, str]]], ...]:
+    async with aiofiles.open("./config/personality.json", "r") as file:
+        return tuple(ujson.loads(await file.read())["systems"])
+
+
 async def update_personality(k: int = 6) -> tuple[dict[str, str | list[dict[str, str]]], ...]:
     if "personalities" not in globals():
         global personalities
-        async with aiofiles.open("./config/personality.json", "r") as file:
-            personality_json = ujson.loads(await file.read())
-            personalities = tuple(random.choices(
-                personality_json["systems"], k=6))  # type: ignore
-
+        personalities = tuple(random.choices(await get_personalties(), k=k))
         return personalities
 
-    # TODO: Make this async
-    async with aiofiles.open("./config/personality.json", "r") as file:
-        personality_json = ujson.loads(await file.read())
-        personalities = tuple(list(personalities)[
-                              1:] + [random.choice(personality_json["systems"])])
+    personalities = tuple(list(personalities)[1:k] + [random.choice(await get_personalties())])
 
-    return personalities  # type: ignore
+    return personalities
 
 
 async def update_personality_wrapper(ttl: int = 3600) -> None:
@@ -108,7 +110,10 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     return content
 
 
-async def should_respond(messages: list[dict[str, str]]) -> bool:
+async def should_respond(messages: list[dict[str, str]], personality: dict[str, str | list[dict[str, str]]] | None = None) -> bool:
+    if personality is None:
+        personality = (await get_personality())[0]
+
     summary = await get_summary(messages)
 
     summary_prompt = ""
@@ -121,7 +126,7 @@ async def should_respond(messages: list[dict[str, str]]) -> bool:
             "content": f"""{summary_prompt}The last message in the conversations was:
             {messages[-1]['content']}
 
-            Would someone described as "{(await get_personality())[0]['summary']}" add their thoughts to this online conversations?
+            Would someone described as "{personality['summary']}" add their thoughts to this online conversations?
 
             Only respond with YES or NO"""
         }],  # type: ignore
@@ -141,7 +146,10 @@ async def should_respond(messages: list[dict[str, str]]) -> bool:
     return False
 
 
-async def get_response(messages: list[dict[str, str]]) -> str:
+async def get_response(messages: list[dict[str, str]], personality: dict[str, str | list[dict[str, str]]] | None = None) -> str:
+    if personality is None:
+        personality = (await get_personality())[0]
+
     summary = await get_summary(messages)
 
     summary_prompt = ""
@@ -168,16 +176,19 @@ async def get_response(messages: list[dict[str, str]]) -> str:
 
     if "YES" in content:
         logger.info("Thinking")
-        think_response = await get_think_response(messages, os.environ["SIMPLE_CHAT_USE_HOMEMADE_COT"] == "TRUE")
+        think_response = await get_think_response(messages, os.environ["SIMPLE_CHAT_USE_HOMEMADE_COT"].lower() in ("true", "1"), personality=personality)
 
         if think_response != "":
             return think_response
 
     logger.info("Not thinking")
-    return await get_chat_response(messages)
+    return await get_chat_response(messages, personality=personality)
 
 
-async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
+async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[str, str | list[dict[str, str]]] | None = None) -> str:
+    if personality is None:
+        personality = (await get_personality())[0]
+
     # think (remake CoT?) https://www.promptingguide.ai/techniques/zeroshot
     # https://github.com/codelion/optillm/blob/main/optillm/moa.py
     summary = await get_summary(messages)
@@ -246,7 +257,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     logger.info(f"Final prompt: {final_prompt}")
 
     final_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
-        messages=(await get_personality())[0]["messages"] + [{
+        messages=personality["messages"] + [{
             "role": "user",
             "content": final_prompt
         }],  # type: ignore
@@ -263,15 +274,17 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     return await model_text_replace(final_content, os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"])
 
 
-async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) -> str:
+async def get_think_response(messages: list[dict[str, str]], CoT: bool = False, personality: dict[str, str | list[dict[str, str]]] | None = None) -> str:
+    if personality is None:
+        personality = (await get_personality())[0]
+
     if CoT:
-        CoT_content = await get_CoT(messages)
+        CoT_content = await get_CoT(messages, personality=personality)
         if CoT_content != "":
             return CoT_content
 
-    messages_with_systems: list[dict[str, str]] = (
-        await get_personality()
-    )[0]["messages"] + messages  # type: ignore
+    messages_with_systems: list[dict[str, str]
+                                ] = personality["messages"] + messages
 
     response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=messages_with_systems,  # type: ignore
@@ -286,10 +299,12 @@ async def get_think_response(messages: list[dict[str, str]], CoT: bool = False) 
     return await model_text_replace(content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])
 
 
-async def get_chat_response(messages: list[dict[str, str]]) -> str:
-    messages_with_systems: list[dict[str, str]] = (
-        await get_personality()
-    )[0]["messages"] + messages  # type: ignore
+async def get_chat_response(messages: list[dict[str, str]], personality: dict[str, str | list[dict[str, str]]] | None = None) -> str:
+    if personality is None:
+        personality = (await get_personality())[0]
+
+    messages_with_systems: list[dict[str, str]
+                                ] = personality["messages"] + messages
 
     response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=messages_with_systems,  # type: ignore

@@ -148,15 +148,17 @@ if __name__ == "__main__":
         latex_splits = message_response.split("$")
 
         for latex_split in range(1 if message_response[-1] != "$" else 0, len(latex_splits), 2):
-            latex_splits[latex_split] = LatexNodes2Text().latex_to_text(latex_splits[latex_split]).replace("*", "\\*")
+            latex_splits[latex_split] = LatexNodes2Text().latex_to_text(
+                latex_splits[latex_split]).replace("*", "\\*")
 
         message_response = "".join(latex_splits)
 
         message_response_split = [""]
         for word in message_response.split(" "):
             if len(word) > 2000:
-               message_response_split += [word[i:i + 2000] for i in range(0, len(word), 2000)] 
-               continue
+                message_response_split += [word[i:i + 2000]
+                                           for i in range(0, len(word), 2000)]
+                continue
 
             if len(message_response_split[-1]) + len(word) > 2000:
                 message_response_split.append("")
@@ -170,6 +172,12 @@ if __name__ == "__main__":
         last_message = reply_message
         for chunk in message_response_split[1:]:
             last_message = await message.channel.send(chunk.strip(), reference=last_message)
+
+    @discord_client.slash_command(name="ask simple chat")
+    @discord.option("personalty", description="Choose personalty", choices=[i["user_name"] for i in chat.non_async_get_personalties()])
+    @discord.option("question", description="Whats your question")
+    async def ask(interaction: discord.Interaction, personalty: str, question: str):
+        interaction.respond(await get_think_response(question))
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])
