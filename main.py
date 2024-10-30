@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
         past_messages = await message.channel.history(after=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
 
-        message_history = await chat.messages_from_history(past_messages, message.created_at.timestamp(), discord_client, message.author.id)
+        message_history = await chat.messages_from_history(past_messages, message.created_at.timestamp(), discord_client, message.author.id, image_db)
 
         if len(message_history) == 0:
             return
@@ -105,16 +105,7 @@ if __name__ == "__main__":
 
         message_response = await chat.remove_latex(await chat.clear_text(await chat.get_response(message_history[::-1])))
 
-        message_response_split = [""]
-        for word in message_response.split(" "):
-            if len(word) > 2000:
-                message_response_split += [word[i:i + 2000]
-                                           for i in range(0, len(word), 2000)]
-                continue
-
-            if len(message_response_split[-1]) + len(word) > 2000:
-                message_response_split.append("")
-            message_response_split[-1] += " " + word
+        message_response_split = await chat.smart_text_splitter(message_response)
 
         reply_message = await message.reply(
             message_response_split[0].strip(),
@@ -130,7 +121,7 @@ if __name__ == "__main__":
     @discord.option("question", description="Whats your question")
     async def ask(interaction: discord.Interaction, personalty: str, question: str):
         logger.info(f"Answering \"{question}\"")
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         message_response = await chat.clear_text(await chat.remove_latex(await chat.get_think_response(
             [{
                 "role": "user",
@@ -145,7 +136,7 @@ if __name__ == "__main__":
         )))
 
         logger.info(f"Answer is \"{message_response}\"")
-        await interaction.respond(message_response)
+        await interaction.respond(message_response[:2000])
 
     @discord_client.slash_command(name="summary")
     async def summary(interaction: discord.Interaction):
@@ -163,14 +154,14 @@ if __name__ == "__main__":
 
         past_messages = await channel.history(after=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
 
-        message_history = await chat.messages_from_history(past_messages, past_messages[0].created_at.timestamp(), discord_client, 0)
+        message_history = await chat.messages_from_history(past_messages, past_messages[0].created_at.timestamp(), discord_client, 0, image_db)
 
         message_response = await chat.clear_text(await chat.remove_latex(await chat.get_summary(
             message_history
         )))
 
         logger.info(f"Summary is \"{message_response}\"")
-        await interaction.respond(message_response[:2000])
+        await interaction.respond(message_response[:2000], ephemeral=True)
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])

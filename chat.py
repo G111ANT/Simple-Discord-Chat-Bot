@@ -33,7 +33,7 @@ async def add_to_system(messages: list[dict[str, str]], pre_addition: str = GLOB
     return messages
 
 
-async def messages_from_history(past_messages: list, message_create_at: int, discord_client: discord.Client, author_id: int) -> list[dict[str, str]]:
+async def messages_from_history(past_messages: list, message_create_at: int, discord_client: discord.Client, author_id: int, image_db: tinydb.TinyDB) -> list[dict[str, str]]:
     last_message_time = message_create_at
 
     message_history = []
@@ -72,11 +72,18 @@ async def messages_from_history(past_messages: list, message_create_at: int, dis
                 content = re.sub(
                     "<@[0-9]+>", at_user.display_name, content)
 
-        content = profanity.censor(content, censor_char="\\*").strip()
+        if os.environ["SIMPLE_CHAT_FILTER_IMAGES"].lower() in ("true", "1") and len(past_message.attachments) + len(past_message.embeds) > 0:
+            if len(content) != 0:
+                content += "\n"
 
-        history_max_char -= len(content) + len(role)
-        if history_max_char < 0:
-            break
+            image_markdown = []
+            for attachment in past_message.attachments:
+                image_markdown.append(f"![{await image_describe(attachment.url, image_db)}]({attachment.url})")
+
+            for embed in past_message.embeds:
+                image_markdown.append(f"![{await image_describe(embed.thumbnail.url, image_db)}]({embed.thumbnail.url})")
+
+            content += " ".join(image_markdown)
 
         message_history.append({
             "role": role,
@@ -84,7 +91,31 @@ async def messages_from_history(past_messages: list, message_create_at: int, dis
             "name": past_message.author.display_name
         })
 
+        content = profanity.censor(content, censor_char="\\*").strip()
+
+        history_max_char -= len(content) + len(role)
+        if history_max_char < 0:
+            break
+
+    for i in range(len(message_history))[::-1]:
+        if len(message_history[i]["content"]) == 0:
+            message_history.pop(i)
+
     return message_history
+
+
+async def smart_text_splitter(text: str) -> list[str]:
+    text_split = [""]
+    for word in text.split(" "):
+        if len(word) > 2000:
+            text_split += [word[i:i + 2000] for i in range(0, len(word), 2000)]
+            continue
+
+        if len(text_split[-1]) + len(word) > 2000:
+            text_split.append("")
+        text_split[-1] += " " + word
+
+    return text_split
 
 
 async def remove_latex(text: str) -> str:
@@ -164,12 +195,18 @@ async def start_personality() -> None:
 
 async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     try:
-        response = requests.get(url)
+        response = requests.get(
+            url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.2; WOW64) AppleWebKit/534.22 (KHTML, like Gecko) Chrome/55.0.1341.125 Safari/534'
+            }
+        )
         img = Image.open(BytesIO(response.content))
         img_hash = str(imagehash.crop_resistant_hash(img))
 
     except Exception as e:
         logger.error(f"{url} failed with {e}")
+        return ""
 
     search = await image_db.search(
         tinydb.Query().hash.matches(
@@ -198,21 +235,6 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     image_db.insert({"description": description_content, "hash": img_hash})
 
     return description_content
-
-
-async def remove_images(messages: list[dict[str, str]], image_db: tinydb.TinyDB) -> list[dict[str, str]]:
-    # replace all images with markdown alt text and (maybe) titles
-    # ![Alt](http://url/ "title")
-    for i in range(len(messages)):
-        if len(list(filter(lambda x: "image_url" in list(x), messages[i]["content"]))) > 0:
-            image_urls = [
-                j["image_url"]["url"]
-                for j in list(filter(
-                    lambda x: "image_url" in list(x),
-                    messages[i]["content"]
-                ))
-            ]
-    return messages
 
 
 @cached(ttl=3600)
