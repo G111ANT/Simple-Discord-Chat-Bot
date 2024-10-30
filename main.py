@@ -142,9 +142,7 @@ if __name__ == "__main__":
 
         logger.info(f"Sent \"{message_history[0]['content']}\" to the AI")
 
-        message_response = await chat.clear_text(await chat.get_response(message_history[::-1]))
-
-        message_response = await chat.remove_latex(message_response)
+        message_response = await chat.remove_latex(await chat.clear_text(await chat.get_response(message_history[::-1])))
 
         message_response_split = [""]
         for word in message_response.split(" "):
@@ -172,7 +170,7 @@ if __name__ == "__main__":
     async def ask(interaction: discord.Interaction, personalty: str, question: str):
         logger.info(f"Answering \"{question}\"")
         await interaction.response.defer(ephemeral=True)
-        message_response = await chat.remove_latex(await chat.get_think_response(
+        message_response = await chat.remove_latex(await chat.clear_text(await chat.get_think_response(
             [{
                 "role": "user",
                 "content": question
@@ -183,7 +181,7 @@ if __name__ == "__main__":
                 lambda x: x["user_name"] == personalty,
                 await chat.get_personalties()
             ))[0]
-        ))
+        )))
 
         logger.info(f"Answer is \"{message_response}\"")
         await interaction.respond(message_response)

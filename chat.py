@@ -29,7 +29,7 @@ async def remove_latex(text: str) -> str:
 
 
 async def model_text_replace(text: str, replace_str: str) -> str:
-    logger.info(f"Replacing text from model {text.replace('\n', '\\n')}.")
+    logger.info(f"Replacing text from model {text.replace('\n', '|n')}.")
     replace_list = replace_str.split(",")
 
     for i in range(0, len(replace_list), 2):
@@ -39,7 +39,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
 
 
 async def clear_text(string: str) -> str:
-    logger.info(f"Cleaning text {string.replace('\n', '\\n')}.")
+    logger.info(f"Cleaning text {string.replace('\n', '|n')}.")
     string = profanity.censor(string, "\\*")
     string = (
         string
@@ -117,7 +117,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     if content is None:
         return ""
 
-    logger.info(f"Summary: {content.replace('\n', '\\n')}")
+    logger.info(f"Summary: {content.replace('\n', '|n')}")
     return content
 
 
@@ -265,7 +265,7 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
     Please provide only a final, optimized response to the original query here:
     """
 
-    logger.info(f"Final prompt: {final_prompt.replace('\n', '\\n')}")
+    logger.info(f"Final prompt: {final_prompt.replace('\n', '|n')}")
 
     final_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=personality["messages"] + [{
