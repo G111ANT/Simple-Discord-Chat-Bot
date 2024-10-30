@@ -265,7 +265,7 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
     Please provide only a final, optimized response to the original query here:
     """
 
-    logger.info(f"Final prompt: {final_prompt.}".replace('\n', '|n'))
+    logger.info(f"Final prompt: {final_prompt}".replace('\n', '|n'))
 
     final_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=personality["messages"] + [{
