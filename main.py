@@ -9,7 +9,6 @@ import re
 from better_profanity import profanity
 from discord.ext import commands
 import aiofiles
-from pylatexenc.latex2text import LatexNodes2Text
 
 logger = logging.getLogger(__name__)
 
@@ -145,13 +144,7 @@ if __name__ == "__main__":
 
         message_response = await chat.clear_text(await chat.get_response(message_history[::-1]))
 
-        latex_splits = message_response.split("$")
-
-        for latex_split in range(1 if message_response[-1] != "$" else 0, len(latex_splits), 2):
-            latex_splits[latex_split] = LatexNodes2Text().latex_to_text(
-                latex_splits[latex_split]).replace("*", "\\*")
-
-        message_response = "".join(latex_splits)
+        message_response = await chat.remove_latex(message_response)
 
         message_response_split = [""]
         for word in message_response.split(" "):
@@ -173,11 +166,12 @@ if __name__ == "__main__":
         for chunk in message_response_split[1:]:
             last_message = await message.channel.send(chunk.strip(), reference=last_message)
 
-    @discord_client.slash_command(name="ask simple chat")
+    @discord_client.slash_command(name="ask")
     @discord.option("personalty", description="Choose personalty", choices=[i["user_name"] for i in chat.non_async_get_personalties()])
     @discord.option("question", description="Whats your question")
     async def ask(interaction: discord.Interaction, personalty: str, question: str):
-        await interaction.respond(await chat.get_think_response(
+        await interaction.response.defer(ephemeral=True)
+        message_response = await chat.get_think_response(
             [{
                 "role": "user",
                 "content": question
@@ -188,7 +182,9 @@ if __name__ == "__main__":
                 lambda x: x["user_name"] == personalty,
                 await chat.get_personalties()
             ))[0]
-        ))
+        )
+
+        await interaction.respond(await chat.remove_latex(message_response))
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])

@@ -8,6 +8,7 @@ import ujson
 import logging
 import asyncio
 from better_profanity import profanity
+from pylatexenc.latex2text import LatexNodes2Text
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,18 @@ GLOBAL_SYSTEM = [{
 }]
 
 
+async def remove_latex(text: str) -> str:
+    latex_splits = text.split("$")
+
+    for latex_split in range(1 if text[-1] != "$" else 0, len(latex_splits), 2):
+        latex_splits[latex_split] = LatexNodes2Text().latex_to_text(
+            latex_splits[latex_split]).replace("*", "\\*")
+
+    return "".join(latex_splits)
+
+
 async def model_text_replace(text: str, replace_str: str) -> str:
-    logger.info(f"Replacing text from model {text.replace('\n', '')}.")
+    logger.info(f"Replacing text from model {text.replace('\n', '\\n')}.")
     replace_list = replace_str.split(",")
 
     for i in range(0, len(replace_list), 2):
@@ -28,7 +39,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
 
 
 async def clear_text(string: str) -> str:
-    logger.info(f"Cleaning text {string}.")
+    logger.info(f"Cleaning text {string.replace('\n', '\\n')}.")
     string = profanity.censor(string, "\\*")
     string = (
         string
@@ -106,7 +117,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     if content is None:
         return ""
 
-    logger.info(f"Summary: {content}")
+    logger.info(f"Summary: {content.replace('\n', '\\n')}")
     return content
 
 
@@ -254,7 +265,7 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
     Please provide only a final, optimized response to the original query here:
     """
 
-    logger.info(f"Final prompt: {final_prompt}")
+    logger.info(f"Final prompt: {final_prompt.replace('\n', '\\n')}")
 
     final_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=personality["messages"] + [{
@@ -262,8 +273,9 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
             "content": final_prompt
         }],  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
-        frequency_penalty=0.25,
-        presence_penalty=0.25
+        # frequency_penalty=0.25,
+        # presence_penalty=-0.05,
+        max_completion_tokens=int(os.environ["SIMPLE_CHAT_MAX_TOKENS"])
     )
 
     final_content = final_response.choices[0].message.content
