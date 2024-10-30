@@ -78,10 +78,16 @@ async def messages_from_history(past_messages: list, message_create_at: int, dis
 
             image_markdown = []
             for attachment in past_message.attachments:
-                image_markdown.append(f"![{await image_describe(attachment.url, image_db)}]({attachment.url})")
+                description = await image_describe(attachment.url, image_db)
+                if description != "":
+                    image_markdown.append(
+                        f"![{description}]({attachment.url})")
 
             for embed in past_message.embeds:
-                image_markdown.append(f"![{await image_describe(embed.thumbnail.url, image_db)}]({embed.thumbnail.url})")
+                description = await image_describe(embed.thumbnail.url, image_db)
+                if description != "":
+                    image_markdown.append(
+                        f"![{description}]({attachment.url})")
 
             content += " ".join(image_markdown)
 

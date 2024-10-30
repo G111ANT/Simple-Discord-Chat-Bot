@@ -156,9 +156,15 @@ if __name__ == "__main__":
 
         message_history = await chat.messages_from_history(past_messages, past_messages[0].created_at.timestamp(), discord_client, 0, image_db)
 
+        if len(message_history) == 0:
+            await interaction.respond("No messages found")
+
         message_response = await chat.clear_text(await chat.remove_latex(await chat.get_summary(
             message_history
         )))
+
+        if len(message_response) == 0:
+            await interaction.respond("ERROR")
 
         logger.info(f"Summary is \"{message_response}\"")
         await interaction.respond(message_response[:2000], ephemeral=True)
