@@ -11,6 +11,11 @@ from better_profanity import profanity
 from pylatexenc.latex2text import LatexNodes2Text
 import discord
 import re
+import asynctinydb as tinydb
+from PIL import Image
+import requests
+from io import BytesIO
+import imagehash
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +154,58 @@ async def start_personality() -> None:
     return
 
 
-async def remove_images(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
+    try:
+        response = requests.get(url)
+        img = Image.open(BytesIO(response.content))
+        img_hash = str(imagehash.crop_resistant_hash(img))
+
+    except Exception as e:
+        logger.error(f"{url} failed with {e}")
+
+    search = await image_db.search(
+        tinydb.Query().hash.matches(
+            "(.+|)" + img_hash[:-2] + ".."
+        ))
+
+    if len(search) > 0:
+        return search[0]["description"]
+
+    description_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {"type": "image", "image_url": {"url": url}}
+            ]
+        }],  # type: ignore
+        model=os.environ["SIMPLE_CHAT_VISION_MODEL"]
+    )
+
+    description_content = description_response.choices[0].message.content
+
+    if description_content is None:
+        return ""
+
+    image_db.insert({"description": description_content, "hash": img_hash})
+
+    return description_content
+
+
+async def remove_images(messages: list[dict[str, str]], image_db: tinydb.TinyDB) -> list[dict[str, str]]:
     # replace all images with markdown alt text and (maybe) titles
     # ![Alt](http://url/ "title")
+    for i in range(len(messages)):
+        if len(list(filter(lambda x: "image_url" in list(x), messages[i]["content"]))) > 0:
+            image_urls = [
+                j["image_url"]["url"]
+                for j in list(filter(
+                    lambda x: "image_url" in list(x),
+                    messages[i]["content"]
+                ))
+            ]
+
+
     return messages
 
 

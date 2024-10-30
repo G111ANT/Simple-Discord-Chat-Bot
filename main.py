@@ -5,8 +5,6 @@ import chat
 import asyncio
 import logging
 import discord
-import re
-from better_profanity import profanity
 from discord.ext import commands
 import aiofiles
 import datetime
@@ -40,6 +38,16 @@ if __name__ == "__main__":
 
     # optional compression and encryption
     # tinydb.Modifier.Compression.brotli(chats_db)
+    # tinydb.Modifier.Encryption.AES_GCM(chats_db)
+
+    logger.info("Loading image db")
+    image_db = tinydb.TinyDB("./db/image.json.br", access_mode="rb+")
+
+    # uses faster json decoder/encoder
+    tinydb.Modifier.Conversion.ExtendedJSON(image_db)
+    # compress the large amount of text data
+    tinydb.Modifier.Compression.brotli(image_db)
+    # optional encryption
     # tinydb.Modifier.Encryption.AES_GCM(chats_db)
 
     discord_intents = discord.Intents.all()
