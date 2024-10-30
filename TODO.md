@@ -1,3 +1,4 @@
 - [x] Add latex (pylatexenc)
 - [ ] Add images description
-- [ ] Add slash commands
+- [x] Add slash commands
+- [ ] Add auto response

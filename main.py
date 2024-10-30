@@ -170,8 +170,9 @@ if __name__ == "__main__":
     @discord.option("personalty", description="Choose personalty", choices=[i["user_name"] for i in chat.non_async_get_personalties()])
     @discord.option("question", description="Whats your question")
     async def ask(interaction: discord.Interaction, personalty: str, question: str):
+        logger.info(f"Answering \"{question}\"")
         await interaction.response.defer(ephemeral=True)
-        message_response = await chat.get_think_response(
+        message_response = await chat.remove_latex(await chat.get_think_response(
             [{
                 "role": "user",
                 "content": question
@@ -182,9 +183,10 @@ if __name__ == "__main__":
                 lambda x: x["user_name"] == personalty,
                 await chat.get_personalties()
             ))[0]
-        )
+        ))
 
-        await interaction.respond(await chat.remove_latex(message_response))
+        logger.info(f"Answer is \"{message_response}\"")
+        await interaction.respond(message_response)
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])
