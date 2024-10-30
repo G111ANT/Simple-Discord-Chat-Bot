@@ -18,7 +18,7 @@ GLOBAL_SYSTEM = [{
 
 
 async def model_text_replace(text: str, replace_str: str) -> str:
-    logger.info(f"Replacing text from model {text}.")
+    logger.info(f"Replacing text from model {text.replace('\n', '')}.")
     replace_list = replace_str.split(",")
 
     for i in range(0, len(replace_list), 2):
@@ -41,16 +41,17 @@ async def clear_text(string: str) -> str:
 async def update_personality(k: int = 6) -> tuple[dict[str, str | list[dict[str, str]]], ...]:
     if "personalities" not in globals():
         global personalities
-        with open("./config/personality.json", "r") as file:
-            personality_json = ujson.load(file)
+        async with aiofiles.open("./config/personality.json", "r") as file:
+            personality_json = ujson.loads(await file.read())
             personalities = tuple(random.choices(
                 personality_json["systems"], k=6))  # type: ignore
 
+        return personalities
+
     # TODO: Make this async
-    with open("./config/personality.json", "r") as file:
-        personality_json = ujson.load(file)
+    async with aiofiles.open("./config/personality.json", "r") as file:
+        personality_json = ujson.loads(await file.read())
         personalities = tuple(list(personalities)[
-                              # type: ignore
                               1:] + [random.choice(personality_json["systems"])])
 
     return personalities  # type: ignore
@@ -196,7 +197,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
 
     base_content_filtered: list[str] = list(
         filter(lambda x: x is not None, base_content))
-    
+
     if len(base_content_filtered) == 0:
         return ""
 
@@ -221,7 +222,7 @@ async def get_CoT(messages: list[dict[str, str]], n=3) -> str:
     )
 
     critiques_content = critique_response.choices[0].message.content
-    
+
     if critiques_content is None:
         return ""
 

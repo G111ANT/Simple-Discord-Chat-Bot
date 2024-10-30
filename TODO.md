@@ -1,2 +1,3 @@
 - [x] Add latex (pylatexenc)
 - [ ] Add images description
+- [ ] Add slash commands
