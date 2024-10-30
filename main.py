@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
         logger.info(f"Responding to \"{message.content}\"")
 
-        past_messages = await message.channel.history(before=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
+        past_messages = await message.channel.history(after=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
 
         message_history = await chat.messages_from_history(past_messages, message.created_at.timestamp(), discord_client, message.author.id)
 
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     async def ask(interaction: discord.Interaction, personalty: str, question: str):
         logger.info(f"Answering \"{question}\"")
         await interaction.response.defer(ephemeral=True)
-        message_response = await chat.remove_latex(await chat.clear_text(await chat.get_think_response(
+        message_response = await chat.clear_text(await chat.remove_latex(await chat.get_think_response(
             [{
                 "role": "user",
                 "content": question
@@ -161,16 +161,16 @@ if __name__ == "__main__":
         if channel is None:
             return
 
-        past_messages = await channel.history(before=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
+        past_messages = await channel.history(after=datetime.datetime.now() - datetime.timedelta(hours=4)).flatten()
 
         message_history = await chat.messages_from_history(past_messages, past_messages[0].created_at.timestamp(), discord_client, 0)
 
-        message_response = await chat.remove_latex(await chat.clear_text(await chat.get_summary(
+        message_response = await chat.clear_text(await chat.remove_latex(await chat.get_summary(
             message_history
         )))
 
         logger.info(f"Summary is \"{message_response}\"")
-        await interaction.respond(message_response)
+        await interaction.respond(message_response[:2000])
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])
