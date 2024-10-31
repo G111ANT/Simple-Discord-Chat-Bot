@@ -72,12 +72,23 @@ async def update_personality(
 ) -> tuple[dict[str, str | list[dict[str, str]]], ...]:
     if "personalities" not in globals():
         global personalities
-        personalities = tuple(random.choices(await get_personalties(), k=k))  # type: ignore
-        return personalities  # type: ignore
+        globals()["personalities"] = tuple(
+            random.choices(await get_personalties(), k=k)
+        )
+        logger.info(
+            f"Updated personalities to {globals()['personalities'][0]['user_name']}."
+        )
+        return globals()["personalities"]
 
-    personalities = tuple(list(personalities)[1:k] + [random.choice(await get_personalties())])  # type: ignore
+    globals()["personalities"] = tuple(
+        list(personalities)[1:k] + [random.choice(await get_personalties())]
+    )
 
-    return personalities  # type: ignore
+    logger.info(
+        f"Updated personalities to {globals()['personalities'][0]['user_name']}."
+    )
+
+    return globals()["personalities"]
 
 
 async def update_personality_wrapper(ttl: int = 3600) -> None:

@@ -66,6 +66,8 @@ if __name__ == "__main__":
         else:
             raise
 
+    profile_picture = ""
+
     discord_client = commands.Bot(intents=discord_intents)
 
     @discord_client.event
@@ -141,10 +143,12 @@ if __name__ == "__main__":
                 await message.guild.me.edit(
                     nick=(await tools.get_personality())[0]["user_name"]
                 )
-                async with aiofiles.open(
-                    (await tools.get_personality())[0]["image"], "rb"
-                ) as file:
-                    await discord_client.user.edit(avatar=await file.read())
+                image_path = (await tools.get_personality())[0]["image"]
+                if globals()["profile_picture"] != image_path:
+                    async with aiofiles.open(image_path, "rb") as file:
+                        await discord_client.user.edit(avatar=await file.read())
+                        globals()["profile_picture"] = image_path
+
             except Exception as e:
                 logger.info(f"{e}")
 
