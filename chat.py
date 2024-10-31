@@ -14,7 +14,7 @@ import os
 import re
 import aiofiles
 import aiofiles.os
-import aiofiles.os.path
+import asyncio
 
 # from better_profanity import profanity
 
@@ -323,8 +323,8 @@ async def get_CoT(
     if summary != "":
         summary_prompt = f"The summary of the conversations is: {summary}\n"
 
-    base_responses = [
-        await AsyncClient(
+    base_responses_coros = [
+        AsyncClient(
             api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
             base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
         ).chat.completions.create(
@@ -334,6 +334,8 @@ async def get_CoT(
         )
         for _ in range(n)
     ]
+
+    base_responses = await asyncio.gather(*base_responses_coros)
 
     base_content = [
         base_response.choices[0].message.content for base_response in base_responses
@@ -358,9 +360,7 @@ async def get_CoT(
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
         messages=GLOBAL_SYSTEM
-        + [
-            {"role": "user", "content": re.sub(" +", " ", critique_prompt)}
-        ],  # type: ignore
+        + [{"role": "user", "content": critique_prompt}],  # type: ignore
         model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
     )
 
@@ -383,9 +383,7 @@ async def get_CoT(
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
         messages=personality["messages"]
-        + [
-            {"role": "user", "content": re.sub(" +", " ", final_prompt)}
-        ],  # type: ignore
+        + [{"role": "user", "content": final_prompt}],  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
         max_completion_tokens=int(os.environ["SIMPLE_CHAT_MAX_TOKENS"]),
     )

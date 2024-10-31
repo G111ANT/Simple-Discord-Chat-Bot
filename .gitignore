@@ -178,3 +178,5 @@ cython_debug/
 
 # my stuff
 tmp/*
+db/*.json
+db/*.json.br

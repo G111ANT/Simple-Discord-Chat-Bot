@@ -75,22 +75,72 @@ if __name__ == "__main__":
     @discord_client.event
     async def on_message(message):
         respond = False
+
+        if (
+            len(await chats_db.search(tinydb.Query().channel == message.channel.id))
+            == 0
+        ):
+            await chats_db.insert(
+                {
+                    "channel": message.channel.id,
+                    "last_chat": str(
+                        datetime.datetime.now() - datetime.timedelta(hours=12)
+                    ),
+                    "last_scan": str(
+                        datetime.datetime.now() - datetime.timedelta(hours=12)
+                    ),
+                }
+            )
+
+        chat_db_entry = (
+            await chats_db.search(tinydb.Query().channel == message.channel.id)
+        )[0]
+
         if (
             message.author.id != discord_client.application_id
             and discord_client.application_id in map(lambda x: x.id, message.mentions)
         ):
             respond = True
 
+        elif datetime.datetime.strptime(
+            chat_db_entry["last_scan"], "%Y-%m-%d %H:%M:%S.%f"
+        ) <= datetime.datetime.now() - datetime.timedelta(hours=1):
+
+            await chats_db.update(
+                {"last_scan": str(datetime.datetime.now())},
+                tinydb.Query().channel == message.channel.id,
+            )
+            message_history = await chat.messages_from_history(
+                await message.channel.history(limit=10).flatten(),
+                message.created_at.timestamp(),
+                discord_client,
+                message.author.id,
+                image_db,
+            )
+            respond = await chat.should_respond(message_history)
+
+        elif datetime.datetime.strptime(
+            chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f"
+        ) >= datetime.datetime.now() - datetime.timedelta(minutes=10):
+            respond = await chat.should_respond(
+                await message.channel.history(limit=10).flatten()
+            )
+
         if not respond:
             return
 
-        if message.guild.me.nick != (await chat.get_personality())[0]["user_name"]:
+        await chats_db.update(
+            {"last_chat": str(datetime.datetime.now())},
+            tinydb.Query().channel == message.channel.id,
+        )
+
+        if message.guild.me.nick != (await tools.get_personality())[0]["user_name"]:
             try:
                 await message.guild.me.edit(
-                    nick=(await chat.get_personality())[0]["user_name"]
+                    nick=(await tools.get_personality())[0]["user_name"]
                 )
                 async with aiofiles.open(
-                    (await chat.get_personality())[0]["image"], "rb"
+                    (await tools.get_personality())[0]["image"], "rb"
                 ) as file:
                     await discord_client.user.edit(avatar=await file.read())
             except Exception as e:
@@ -119,11 +169,11 @@ if __name__ == "__main__":
 
         logger.info(f"Sent \"{message_history[0]['content']}\" to the AI")
 
-        message_response = await chat.remove_latex(
-            await chat.clear_text(await chat.get_response(message_history[::-1]))
+        message_response = await tools.remove_latex(
+            await tools.clear_text(await chat.get_response(message_history[::-1]))
         )
 
-        message_response_split = await chat.smart_text_splitter(message_response)
+        message_response_split = await tools.smart_text_splitter(message_response)
 
         reply_message = await message.reply(
             message_response_split[0].strip(), mention_author=True
