@@ -14,6 +14,7 @@ import os
 import re
 import aiofiles
 import aiofiles.os
+import aiofiles.os.path
 
 # from better_profanity import profanity
 
@@ -142,6 +143,8 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     except Exception as e:
         logger.error(f"{url} failed with {e}")
+        if await aiofiles.os.path.exists(f"./tmp/{hash(url)}.image"):
+            await aiofiles.os.remove(f"./tmp/{hash(url)}.image")
         return ""
 
     search = await image_db.search(tinydb.Query().hash.matches(img_hash[:-2] + "..$"))
