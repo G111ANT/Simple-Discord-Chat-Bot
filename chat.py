@@ -8,7 +8,7 @@ import ujson
 import logging
 import asyncio
 from better_profanity import profanity
-from pylatexenc.latex2text import LatexNodes2Text
+import flatlatex
 import discord
 import re
 import asynctinydb as tinydb
@@ -126,10 +126,13 @@ async def smart_text_splitter(text: str) -> list[str]:
 
 async def remove_latex(text: str) -> str:
     latex_splits = text.split("$")
-
+    c = flatlatex.converter()
     for latex_split in range(1 if text[-1] != "$" else 0, len(latex_splits), 2):
-        latex_splits[latex_split] = LatexNodes2Text().latex_to_text(
-            latex_splits[latex_split]).replace("*", "\\*")
+        n_splits = latex_splits[latex_split].split("\n")
+        for n_split in range(len(n_splits)):
+            n_splits[n_split] = c.convert(n_splits[n_split]).replace("*", "\\*")
+
+        latex_splits[latex_split] = "\n".join(n_splits)
 
     return "".join(latex_splits)
 
