@@ -137,7 +137,7 @@ async def remove_latex(text: str) -> str:
 
         latex_splits[latex_split] = "\n".join(n_splits)
 
-    return "".join(latex_splits)
+    return "".join(latex_splits).replace("\\n", "")
 
 
 async def model_text_replace(text: str, replace_str: str) -> str:
@@ -414,7 +414,6 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
             "content": re.sub(" +", " ", final_prompt)
         }],  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
-        temperature=0.2,
         max_completion_tokens=int(os.environ["SIMPLE_CHAT_MAX_TOKENS"])
     )
 
