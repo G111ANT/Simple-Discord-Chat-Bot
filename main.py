@@ -95,36 +95,38 @@ if __name__ == "__main__":
         chat_db_entry = (
             await chats_db.search(tinydb.Query().channel == message.channel.id)
         )[0]
+        if message.author.id != discord_client.application_id:
+            if discord_client.application_id in map(lambda x: x.id, message.mentions):
+                respond = True
 
-        if (
-            message.author.id != discord_client.application_id
-            and discord_client.application_id in map(lambda x: x.id, message.mentions)
-        ):
-            respond = True
+            elif datetime.datetime.strptime(
+                chat_db_entry["last_scan"], "%Y-%m-%d %H:%M:%S.%f"
+            ) <= datetime.datetime.now() - datetime.timedelta(hours=1):
 
-        elif datetime.datetime.strptime(
-            chat_db_entry["last_scan"], "%Y-%m-%d %H:%M:%S.%f"
-        ) <= datetime.datetime.now() - datetime.timedelta(hours=1):
+                await chats_db.update(
+                    {"last_scan": str(datetime.datetime.now())},
+                    tinydb.Query().channel == message.channel.id,
+                )
+                limited_message_history = await chat.messages_from_history(
+                    await message.channel.history(limit=10).flatten(),
+                    message.created_at.timestamp(),
+                    discord_client,
+                    message.author.id,
+                    image_db,
+                )
+                respond = await chat.should_respond(limited_message_history)
 
-            await chats_db.update(
-                {"last_scan": str(datetime.datetime.now())},
-                tinydb.Query().channel == message.channel.id,
-            )
-            message_history = await chat.messages_from_history(
-                await message.channel.history(limit=10).flatten(),
-                message.created_at.timestamp(),
-                discord_client,
-                message.author.id,
-                image_db,
-            )
-            respond = await chat.should_respond(message_history)
-
-        elif datetime.datetime.strptime(
-            chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f"
-        ) >= datetime.datetime.now() - datetime.timedelta(minutes=10):
-            respond = await chat.should_respond(
-                await message.channel.history(limit=10).flatten()
-            )
+            elif datetime.datetime.strptime(
+                chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f"
+            ) >= datetime.datetime.now() - datetime.timedelta(minutes=10):
+                limited_message_history = await chat.messages_from_history(
+                    await message.channel.history(limit=10).flatten(),
+                    message.created_at.timestamp(),
+                    discord_client,
+                    message.author.id,
+                    image_db,
+                )
+                respond = await chat.should_respond(limited_message_history)
 
         if not respond:
             return
@@ -153,7 +155,7 @@ if __name__ == "__main__":
         ).flatten()
 
         message_history = await chat.messages_from_history(
-            past_messages,
+            past_messages[::-1],
             message.created_at.timestamp(),
             discord_client,
             message.author.id,
