@@ -149,8 +149,8 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                     {"type": "text", "text": "What's in this image?"},
                     {"type": "image", "image_url": {"url": url}},
                 ],
-            }
-        ],  # type: ignore
+            }  # type: ignore
+        ],
         model=os.environ["SIMPLE_CHAT_VISION_MODEL"],
     )
 
