@@ -42,7 +42,7 @@ A little fun discord chat bot.
     * `SIMPLE_CHAT_OPENAI_BASE_URL`: The base URL of the OpenAI API.
     * `SIMPLE_CHAT_OPENAI_ROUTER_MODEL`: The model used for routing requests (default: `gpt-4o-mini`).
     * `SIMPLE_CHAT_CHAT_MODEL`: The model used for basic chat responses (default: `gpt-4o`).
-    * `SIMPLE_CHAT_CHAT_MODEL_REPLACE`: A regular expression used to replace text in the chat model's output (default: ` , `, replaces " " with " ").
+    * `SIMPLE_CHAT_CHAT_MODEL_REPLACE`: A regular expression used to replace text in the chat model's output (default: ` , `) (i.e, 'a,b' would replace all 'a's with 'b's).
     * `SIMPLE_CHAT_THINK_MODEL`: The model used for thought process and analysis (default: `o1-mini`).
     * `SIMPLE_CHAT_THINK_MODEL_REPLACE`: A regular expression used to replace text in the think model's output (default: ` , `).
     * `SIMPLE_CHAT_VISION_MODEL`: The model used for vision tasks (default: `gpt-4o`).
