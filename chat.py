@@ -13,7 +13,8 @@ import discord
 import asynctinydb as tinydb
 import os
 import re
-from better_profanity import profanity
+
+# from better_profanity import profanity
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +100,11 @@ async def messages_from_history(
 
             content += " ".join(image_markdown)
 
+        # content = profanity.censor(content, censor_char="\\*").strip()
+
         message_history.append(
             {"role": role, "content": content, "name": past_message.author.display_name}
         )
-
-        content = profanity.censor(content, censor_char="\\*").strip()
 
         history_max_char -= len(content) + len(role)
         if history_max_char < 0:
@@ -178,7 +179,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         + [
             {
                 "role": "user",
-                "content": "Generate a concise, single paragraph summary of the discussions above. Write the summary here:",
+                "content": "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Write the summary here:",
             }
         ],  # type: ignore
         model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],

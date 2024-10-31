@@ -99,7 +99,7 @@ if __name__ == "__main__":
         logger.info(f'Responding to "{message.content}"')
 
         past_messages = await message.channel.history(
-            after=datetime.datetime.now() - datetime.timedelta(hours=4)
+            after=datetime.datetime.now() - datetime.timedelta(hours=12)
         ).flatten()
 
         message_history = await chat.messages_from_history(
@@ -176,10 +176,12 @@ if __name__ == "__main__":
             await asyncio.sleep(3)
 
         if channel is None:
+            logger.error("Summary broke")
+            await interaction.respond("ERROR")
             return
 
         past_messages = await channel.history(
-            after=datetime.datetime.now() - datetime.timedelta(hours=4)
+            after=datetime.datetime.now() - datetime.timedelta(hours=12)
         ).flatten()
 
         message_history = await chat.messages_from_history(
@@ -191,6 +193,7 @@ if __name__ == "__main__":
         )
 
         if len(message_history) == 0:
+            logger.error("No messages found")
             await interaction.respond("No messages found")
 
         message_response = await tools.clear_text(
@@ -198,6 +201,7 @@ if __name__ == "__main__":
         )
 
         if len(message_response) == 0:
+            logger.error("I have no idea")
             await interaction.respond("ERROR")
 
         logger.info(f'Summary is "{message_response}"')
