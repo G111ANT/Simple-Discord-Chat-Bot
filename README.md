@@ -29,8 +29,10 @@ A little fun discord chat bot.
 ### Usage
 
 1. **Run the main script:**
-   ```cd simple-chat-bot
-   ./start.sh```
+   ```
+   cd simple-chat-bot
+   ./start.sh
+   ```
 
 ### Configuration
 
