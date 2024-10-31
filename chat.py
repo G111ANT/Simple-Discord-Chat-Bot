@@ -4,15 +4,16 @@ from aiocache import cached
 import logging
 import re
 import asynctinydb as tinydb
-from PIL import Image
+import PIL
 import requests
-from io import BytesIO
 import imagehash
 import tools
 import discord
 import asynctinydb as tinydb
 import os
 import re
+import aiofiles
+import aiofiles.os
 
 # from better_profanity import profanity
 
@@ -94,7 +95,7 @@ async def messages_from_history(
                     image_markdown.append(f"![{description}]({attachment.url})")
 
             for embed in past_message.embeds:
-                description = await image_describe(embed.thumbnail.url, image_db)
+                description = await image_describe(embed.thumbnail.proxy_url, image_db)
                 if description != "":
                     image_markdown.append(f"![{description}]({attachment.url})")
 
@@ -124,17 +125,26 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.2; WOW64) AppleWebKit/534.22 (KHTML, like Gecko) Chrome/55.0.1341.125 Safari/534"
             },
+            stream=True,
         )
-        img = Image.open(BytesIO(response.content))
-        img_hash = str(imagehash.crop_resistant_hash(img))
+        extension = re.findall(r"\.[a-zA-Z]+\?", url)
+
+        async with aiofiles.open(
+            f"./tmp/{hash(url)}.{extension[-1][:-1]}", "wb"
+        ) as file:
+            await file.write(response.content)
+
+        # WHYYYYYYYY
+        with PIL.Image.open(f"./tmp/{hash(url)}.{extension[-1][:-1]}") as img:
+            img_hash = str(imagehash.crop_resistant_hash(img))
+
+        await aiofiles.os.remove(f"./tmp/{hash(url)}.image")
 
     except Exception as e:
         logger.error(f"{url} failed with {e}")
         return ""
 
-    search = await image_db.search(
-        tinydb.Query().hash.matches("(.+|)" + img_hash[:-2] + "..")
-    )
+    search = await image_db.search(tinydb.Query().hash.matches(img_hash[:-2] + "..$"))
 
     if len(search) > 0:
         return search[0]["description"]
