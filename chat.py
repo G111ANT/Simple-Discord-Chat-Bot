@@ -360,8 +360,8 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
             messages=await add_to_system(GLOBAL_SYSTEM, "", " Keep the message to a paragraph.") + messages,
             model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
-            temperature=0.9,
-            max_completion_tokens=int(os.environ["SIMPLE_CHAT_MAX_TOKENS"])//6)
+            temperature=1
+    )
         for _ in range(n)]
 
     base_content = [
@@ -373,25 +373,19 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
     if len(base_content_filtered) == 0:
         return ""
 
-    critique_prompt = f"""{summary_prompt}Original query: {messages[-1]['content']}
-
-    I will present you with three candidate responses to the original query. Please analyze and critique each response, discussing their strengths and weaknesses. Provide your analysis for each candidate separately."""
+    critique_prompt = f"{summary_prompt}Original query: {messages[-1]['content']}\n\nI will present you with three candidate responses to the original query. Please analyze and critique each response, discussing their strengths and weaknesses. Provide your analysis for each candidate separately."
 
     for completions in range(len(base_content_filtered)):
-        critique_prompt += f"""
-        Candidate {completions + 1}:
-        {await model_text_replace(base_content_filtered[completions], os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])}
-        """
+        critique_prompt += f"\nCandidate {completions + 1}:\n{await model_text_replace(base_content_filtered[completions], os.environ['SIMPLE_CHAT_THINK_MODEL_REPLACE'])}\n"
 
     critique_prompt += "\nPlease provide your critique for each candidate here:"
 
     critique_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=GLOBAL_SYSTEM + [{
             "role": "user",
-            "content": critique_prompt
+            "content": re.sub(" +", " ", critique_prompt)
         }],  # type: ignore
-        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
-        max_completion_tokens=int(os.environ["SIMPLE_CHAT_MAX_TOKENS"])//6
+        model=os.environ["SIMPLE_CHAT_THINK_MODEL"]
     )
 
     critiques_content = critique_response.choices[0].message.content
@@ -399,33 +393,22 @@ async def get_CoT(messages: list[dict[str, str]], n: int = 3, personality: dict[
     if critiques_content is None:
         return ""
 
-    final_prompt = f"""{summary_prompt}Original query: {messages[-1]['content']}
-
-    I will present you with three candidate responses to the original query. Please analyze and critique each response, discussing their strengths and weaknesses. Provide your analysis for each candidate separately."""
+    final_prompt = f"{summary_prompt}Original query: {messages[-1]['content']}\n\nBased on the following candidate responses and their critiques, generate a final response to the original query."
 
     for completions in range(len(base_content_filtered)):
-        final_prompt += f"""
-        Candidate {completions + 1}:
-        {await model_text_replace(base_content_filtered[completions], os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])}
-        """
+        final_prompt += f"\nCandidate {completions + 1}:\n{await model_text_replace(base_content_filtered[completions], os.environ['SIMPLE_CHAT_THINK_MODEL_REPLACE'])}"
 
-    final_prompt += f"""
-    Critiques of all candidates:
-    {await model_text_replace(critiques_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"])}
-
-    Please provide only a final, optimized response to the original query without mentioning the candidates here:
-    """
+    final_prompt += f"\nCritiques of all candidates:\n{await model_text_replace(critiques_content, os.environ['SIMPLE_CHAT_THINK_MODEL_REPLACE'])}\nPlease provide only a final, optimized response to the original query here:"
 
     logger.info(f"Final prompt: {final_prompt}".replace('\n', '|n'))
 
     final_response = await AsyncClient(api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"], base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"]).chat.completions.create(
         messages=personality["messages"] + [{
             "role": "user",
-            "content": final_prompt
+            "content": re.sub(" +", " ", final_prompt)
         }],  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
-        # frequency_penalty=0.25,
-        # presence_penalty=-0.05,
+        temperature=0.2,
         max_completion_tokens=int(os.environ["SIMPLE_CHAT_MAX_TOKENS"])
     )
 
