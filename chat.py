@@ -130,7 +130,10 @@ async def remove_latex(text: str) -> str:
     for latex_split in range(1 if text[-1] != "$" else 0, len(latex_splits), 2):
         n_splits = latex_splits[latex_split].split("\n")
         for n_split in range(len(n_splits)):
-            n_splits[n_split] = c.convert(n_splits[n_split]).replace("*", "\\*")
+            try:
+                n_splits[n_split] = c.convert(n_splits[n_split]).replace("*", "\\*")
+            except Exception as e:
+                logger.error(e)
 
         latex_splits[latex_split] = "\n".join(n_splits)
 
