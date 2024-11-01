@@ -1,24 +1,29 @@
-from dotenv import load_dotenv
-import asynctinydb as tinydb
-import os
-import chat
 import asyncio
-import logging
-import discord
-from discord.ext import commands
-import aiofiles
 import datetime
+import logging
+import os
+
+import aiofiles
+import asynctinydb as tinydb
+import chat
+import discord
 import tools
+from discord.ext import commands
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
+    file_handler = logging.FileHandler("./log/simple_chat.log")
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(tools.NotTooLongStringFormatter())
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
-            logging.FileHandler("./log/simple_chat.log"),
-            logging.StreamHandler(),
+            file_handler,
+            stream_handler,
         ],
     )
 

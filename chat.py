@@ -1,20 +1,19 @@
-from openai import AsyncClient
-import os
-from aiocache import cached
+import asyncio
 import logging
-import re
-import asynctinydb as tinydb
-import PIL
-import requests
-import imagehash
-import tools
-import discord
-import asynctinydb as tinydb
 import os
 import re
+
 import aiofiles
 import aiofiles.os
-import asyncio
+import asynctinydb as tinydb
+import cot
+import discord
+import imagehash
+import PIL
+import requests
+import tools
+from aiocache import cached
+from openai import AsyncClient
 
 # from better_profanity import profanity
 
@@ -119,6 +118,7 @@ async def messages_from_history(
     return message_history
 
 
+@cached(ttl=3600)
 async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     try:
         response = requests.get(
@@ -203,7 +203,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     if content is None:
         return ""
 
-    logger.info(f"Summary: {content}".replace("\n", "|n"))
+    logger.info(f"Summary: {content}")
     return content
 
 
@@ -376,7 +376,7 @@ async def get_CoT(
 
     final_prompt += f"\nCritiques of all candidates:\n{await tools.model_text_replace(critiques_content, os.environ['SIMPLE_CHAT_THINK_MODEL_REPLACE'])}\nPlease provide only a final, optimized response to the original query here:"
 
-    logger.info(f"Final prompt: {final_prompt}".replace("\n", "|n"))
+    logger.info(f"Final prompt: {final_prompt}")
 
     final_response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
@@ -408,7 +408,7 @@ async def get_think_response(
         personality["messages"] = await add_to_system(personality["messages"])  # type: ignore
 
     if CoT:
-        CoT_content = await get_CoT(messages, personality=personality)
+        CoT_content = await cot.get_CoT(messages, personality=personality)
         if CoT_content != "":
             return CoT_content
 

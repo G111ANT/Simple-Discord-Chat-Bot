@@ -1,13 +1,28 @@
-from asyncio import sleep
-import random
-import aiofiles
-import ujson
-import logging
 import asyncio
-from better_profanity import profanity
+import logging
+import random
+from asyncio import sleep
+import re
+import aiofiles
 import flatlatex
+import ujson
+from better_profanity import profanity
 
 logger = logging.getLogger(__name__)
+
+
+# https://stackoverflow.com/questions/70640701/python-logger-limit-string-size
+class NotTooLongStringFormatter(logging.Formatter):
+
+    def __init__(self, max_length=100):
+        super(NotTooLongStringFormatter, self).__init__()
+        self.max_length = max_length
+
+    def format(self, record):
+        record.msg.replace("\n", "|n")
+        if len(record.msg) > self.max_length + 3:
+            record.msg = record.msg[: self.max_length] + "..."
+        return super().format(record)
 
 
 async def smart_text_splitter(text: str) -> list[str]:
@@ -25,6 +40,7 @@ async def smart_text_splitter(text: str) -> list[str]:
 
 
 async def remove_latex(text: str) -> str:
+    text = re.sub(r"\$+", r"\$", text)
     latex_splits = text.split("$")
     c = flatlatex.converter()
     for latex_split in range(1 if text[-1] != "$" else 0, len(latex_splits), 2):
@@ -41,7 +57,7 @@ async def remove_latex(text: str) -> str:
 
 
 async def model_text_replace(text: str, replace_str: str) -> str:
-    logger.info(f"Replacing text from model {text}.".replace("\n", "|n"))
+    logger.info(f"Replacing text from model {text}.")
     replace_list = replace_str.split(",")
 
     for i in range(0, len(replace_list), 2):
@@ -51,7 +67,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
 
 
 async def clear_text(string: str) -> str:
-    logger.info(f"Cleaning text {string}.".replace("\n", "|n"))
+    logger.info(f"Cleaning text {string}.")
     string = profanity.censor(string, "\\*")
     string = string.strip().replace("\n", "‎\n")
     return string + "‎"
