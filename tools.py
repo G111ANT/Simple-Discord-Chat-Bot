@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import random
-from asyncio import sleep
 import re
+from asyncio import sleep
+
 import aiofiles
 import flatlatex
 import ujson
@@ -40,20 +41,20 @@ async def smart_text_splitter(text: str) -> list[str]:
 
 
 async def remove_latex(text: str) -> str:
-    text = re.sub(r"\$+", r"\$", text)
-    latex_splits = text.split("$")
+    text = text.replace("$$", "\n$\n")
+    latex_splits = list(filter(lambda x: len(x) > 0, text.split("$")))
     c = flatlatex.converter()
-    for latex_split in range(1 if text[-1] != "$" else 0, len(latex_splits), 2):
-        n_splits = latex_splits[latex_split].split("\n")
+    for latex_split in range(0 if text[0] == "$" else 1, len(latex_splits), 2):
+        n_splits = list(filter(lambda x: len(x) > 0, latex_splits[latex_split].split("\n")))
         for n_split in range(len(n_splits)):
             try:
-                n_splits[n_split] = c.convert(n_splits[n_split]).replace("*", "\\*")
+                n_splits[n_split] = "*" + c.convert(n_splits[n_split].strip()).replace("*", "\\*") + "*"
             except Exception as e:
                 logger.error(e)
-
+        
         latex_splits[latex_split] = "\n".join(n_splits)
 
-    return "".join(latex_splits).replace("\\n", "")
+    return "".join(latex_splits)
 
 
 async def model_text_replace(text: str, replace_str: str) -> str:

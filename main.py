@@ -81,6 +81,21 @@ if __name__ == "__main__":
 
     @discord_client.event
     async def on_message(message):
+
+        if message.guild.me.nick != (await tools.get_personality())[0]["user_name"]:
+            try:
+                await message.guild.me.edit(
+                    nick=(await tools.get_personality())[0]["user_name"]
+                )
+                image_path = (await tools.get_personality())[0]["image"]
+                if globals()["profile_picture"] != image_path:
+                    async with aiofiles.open(image_path, "rb") as file:
+                        await discord_client.user.edit(avatar=await file.read())
+                        globals()["profile_picture"] = image_path
+
+            except Exception as e:
+                logger.info(f"{e}")
+
         respond = False
 
         if (
@@ -102,6 +117,7 @@ if __name__ == "__main__":
         chat_db_entry = (
             await chats_db.search(tinydb.Query().channel == message.channel.id)
         )[0]
+
         if message.author.id != discord_client.application_id:
             if discord_client.application_id in map(lambda x: x.id, message.mentions):
                 respond = True
@@ -123,9 +139,9 @@ if __name__ == "__main__":
                 )
                 respond = await chat.should_respond(limited_message_history)
 
-            elif datetime.datetime.strptime(
+            elif datetime.timedelta(minutes=5) >= datetime.datetime.strptime(
                 chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f"
-            ) >= datetime.datetime.now() - datetime.timedelta(minutes=10):
+            ) - datetime.datetime.now() >= datetime.timedelta(minutes=10):
                 limited_message_history = await chat.messages_from_history(
                     await message.channel.history(limit=10).flatten(),
                     message.created_at.timestamp(),
@@ -142,20 +158,6 @@ if __name__ == "__main__":
             {"last_chat": str(datetime.datetime.now())},
             tinydb.Query().channel == message.channel.id,
         )
-
-        if message.guild.me.nick != (await tools.get_personality())[0]["user_name"]:
-            try:
-                await message.guild.me.edit(
-                    nick=(await tools.get_personality())[0]["user_name"]
-                )
-                image_path = (await tools.get_personality())[0]["image"]
-                if globals()["profile_picture"] != image_path:
-                    async with aiofiles.open(image_path, "rb") as file:
-                        await discord_client.user.edit(avatar=await file.read())
-                        globals()["profile_picture"] = image_path
-
-            except Exception as e:
-                logger.info(f"{e}")
 
         logger.info(f'Responding to "{message.content}"')
 

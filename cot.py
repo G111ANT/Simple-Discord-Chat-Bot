@@ -3,9 +3,7 @@ import logging
 import os
 
 import chat
-
 import tools
-
 from openai import AsyncClient
 
 logger = logging.getLogger(__name__)
@@ -23,8 +21,8 @@ async def eval(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
-        messages=messages + [{"role": "user", "content": "Evaluate the quality of this conversation on a scale from 0 to 10, where 0 is poor and 10 is excellent. Consider factors such as correctness, coherence, relevance, and engagement. Only respond with a number between 0 and 10."}],  # type: ignore
-        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
+        messages=messages + [{"role": "user", "content": "Evaluate the quality of this conversation on a scale from 0 to 10, where 0 is poor, 5 is average and 10 is excellent. Consider factors such as correctness, coherence, relevance, and engagement. Only respond with a number."}],  # type: ignore
+        model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
     )
 
     eval_content = eval_response.choices[0].message.content
@@ -33,13 +31,14 @@ async def eval(
         return 0
 
     try:
-        return int(
+        score = int(
             list(
                 filter(
                     lambda x: x.isnumeric() and 0 <= int(x) <= 10, eval_content.split()
                 )
             )[0]
         )
+        return score
     except Exception as e:
         logger.error(e)
 
@@ -60,7 +59,7 @@ async def is_answer(
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
         messages=messages + [{"role": "user", "content": f'Is "{answer}" a perfect response to the conversation above? Consider factors such as coherence, correctness, relevance, and engagement. Only respond with YES and NO.'}],  # type: ignore
-        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
+        model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
     )
 
     eval_content = eval_response.choices[0].message.content
@@ -68,7 +67,7 @@ async def is_answer(
     if eval_content is None:
         return False
 
-    return "yes" in eval_content.lower()
+    return "yes" in eval_content.lower().split()
 
 
 async def get_CoT(
