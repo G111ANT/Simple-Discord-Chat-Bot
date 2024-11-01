@@ -278,7 +278,7 @@ async def get_response(
                 "content": f"""{summary_prompt}The last message in the conversion was:
             "{messages[-1]['content']}"
 
-            Would someone need to use advanced reasoning skills to respond to this??
+            Would someone need to use advanced reasoning skills to respond to this query?
 
             Only respond with YES or NO""",
             }
