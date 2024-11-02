@@ -82,7 +82,10 @@ if __name__ == "__main__":
     @discord_client.event
     async def on_message(message):
 
-        if message.guild.me.nick != (await tools.get_personality())[0]["user_name"]:
+        if (
+            message.guild.me.nick
+            != (await tools.get_personality())[0]["user_name"]
+        ):
             try:
                 await message.guild.me.edit(
                     nick=(await tools.get_personality())[0]["user_name"]
@@ -99,7 +102,11 @@ if __name__ == "__main__":
         respond = False
 
         if (
-            len(await chats_db.search(tinydb.Query().channel == message.channel.id))
+            len(
+                await chats_db.search(
+                    tinydb.Query().channel == message.channel.id
+                )
+            )
             == 0
         ):
             await chats_db.insert(
@@ -119,7 +126,9 @@ if __name__ == "__main__":
         )[0]
 
         if message.author.id != discord_client.application_id:
-            if discord_client.application_id in map(lambda x: x.id, message.mentions):
+            if discord_client.application_id in map(
+                lambda x: x.id, message.mentions
+            ):
                 respond = True
 
             elif datetime.datetime.strptime(
@@ -139,9 +148,14 @@ if __name__ == "__main__":
                 )
                 respond = await chat.should_respond(limited_message_history)
 
-            elif datetime.timedelta(minutes=5) >= datetime.datetime.strptime(
-                chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f"
-            ) - datetime.datetime.now() >= datetime.timedelta(minutes=10):
+            elif (
+                datetime.timedelta(minutes=5)
+                >= datetime.datetime.strptime(
+                    chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f"
+                )
+                - datetime.datetime.now()
+                >= datetime.timedelta(minutes=10)
+            ):
                 limited_message_history = await chat.messages_from_history(
                     await message.channel.history(limit=10).flatten(),
                     message.created_at.timestamp(),
@@ -183,10 +197,14 @@ if __name__ == "__main__":
         logger.info(f"Sent \"{message_history[0]['content']}\" to the AI")
 
         message_response = await tools.remove_latex(
-            await tools.clear_text(await chat.get_response(message_history[::-1]))
+            await tools.clear_text(
+                await chat.get_response(message_history[::-1])
+            )
         )
 
-        message_response_split = await tools.smart_text_splitter(message_response)
+        message_response_split = await tools.smart_text_splitter(
+            message_response
+        )
 
         reply_message = await message.reply(
             message_response_split[0].strip(), mention_author=True
@@ -205,9 +223,18 @@ if __name__ == "__main__":
         choices=[i["user_name"] for i in tools.non_async_get_personalties()],
     )
     @discord.option("question", description="Whats your question")
-    async def ask(interaction: discord.Interaction, personalty: str, question: str):
+    async def ask(
+        interaction: discord.Interaction, personalty: str, question: str
+    ):
         logger.info(f'Answering "{question}"')
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
+
+        for _ in range(3):
+            channel = interaction.channel
+            if channel is not None:
+                break
+            await asyncio.sleep(3)
+
         message_response = await tools.clear_text(
             await tools.remove_latex(
                 await chat.get_think_response(
@@ -225,7 +252,13 @@ if __name__ == "__main__":
         )
 
         logger.info(f'Answer is "{message_response}"')
-        await interaction.respond(message_response[:2000])
+        message_response_split = await tools.smart_text_splitter(
+            message_response
+        )
+        await interaction.respond(message_response_split[0])
+        if channel is not None:
+            for split in message_response_split[1:]:
+                await channel.send(split)
 
     @discord_client.slash_command(name="summary")
     async def summary(interaction: discord.Interaction):

@@ -232,7 +232,7 @@ async def should_respond(
                 "content": f"""{summary_prompt}The last message in the conversations was:
             {messages[-1]['content']}
 
-            Would someone described as "{personality['summary']}" add their thoughts to this online conversations?
+            Would a chat bot described as "{personality['summary']}" add their thoughts to this online conversations?
 
             Only respond with YES or NO""",
             }
@@ -278,9 +278,13 @@ async def get_response(
                 "content": f"""{summary_prompt}The last message in the conversion was:
             "{messages[-1]['content']}"
 
-            Would someone need to use advanced reasoning skills to respond to this query?
+            
+            Would someone need to use advanced reasoning skills to respond to this query? Give a score between 0 and 10, where 0 requires no reasoning, 5 requires minimal reasoning, and 10 requires advanced reasoning skills to respond.
+            Example: "How would you find the gcd of 144, and 13?" -> "6"
+            Example: "Do you think Alexa is a good name?" -> "0"
+            Example: "Show that there are no positive integers $x$, $y$ such that $x^2 = 8y^2$." -> "9"
 
-            Only respond with YES or NO""",
+            Only respond with number""",
             }
         ],  # type: ignore
         model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
@@ -288,10 +292,25 @@ async def get_response(
 
     content = response.choices[0].message.content
 
-    if content is None:
-        return ""
+    think = False
 
-    if "YES" in content:
+    if content is None:
+        pass
+    else:
+        try:
+            score = int(
+                list(
+                    filter(
+                        lambda x: x.isnumeric() and 0 <= int(x) <= 10,
+                        content.split(),
+                    )
+                )[0]
+            )
+            think = score > 7
+        except Exception as e:
+            logger.error(e)
+
+    if think:
         logger.info("Thinking")
         think_response = await get_think_response(
             messages,

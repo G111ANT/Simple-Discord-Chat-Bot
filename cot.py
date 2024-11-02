@@ -21,7 +21,7 @@ async def eval(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
-        messages=messages + [{"role": "user", "content": "Evaluate the quality of this conversation on a scale from 0 to 10, where 0 is poor, 5 is average and 10 is excellent. Consider factors such as correctness, coherence, relevance, and engagement. Only respond with a number."}],  # type: ignore
+        messages=messages + [{"role": "user", "content": "Evaluate the quality of this conversation on a scale from 0 to 10, where 0 is poor, 5 is average and 10 is excellent. Consider factors such as correctness, coherence, relevance, and engagement.\n\nOnly respond with a number"}],  # type: ignore
         model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
     )
 
@@ -34,7 +34,8 @@ async def eval(
         score = int(
             list(
                 filter(
-                    lambda x: x.isnumeric() and 0 <= int(x) <= 10, eval_content.split()
+                    lambda x: x.isnumeric() and 0 <= int(x) <= 10,
+                    eval_content.split(),
                 )
             )[0]
         )
@@ -79,14 +80,15 @@ async def get_CoT(
 
     if personality is None:
         personality = (await tools.get_personality())[0]
-        personality["messages"] = await chat.add_to_system(personality["messages"])  # type: ignore
+        personality["messages"] = await chat.add_to_system(
+            personality["messages"],
+        )  # type: ignore
 
     original_messages = messages[::]
 
     messages = [messages[-1]]
 
-    # think (remake CoT?) https://www.promptingguide.ai/techniques/zeroshot
-    # https://github.com/codelion/optillm/blob/main/optillm/moa.py
+    # https://github.com/codelion/optillm/blob/main/optillm/mcts.py
     best_answer = ""
     for deep in range(depth):
         logger.info(f"CoT depth {deep+1}")
@@ -105,7 +107,8 @@ async def get_CoT(
         base_responses = await asyncio.gather(*base_responses_coros)
 
         base_content = [
-            base_response.choices[0].message.content for base_response in base_responses
+            base_response.choices[0].message.content
+            for base_response in base_responses
         ]
 
         base_content_filtered: list[str] = list(
@@ -120,7 +123,9 @@ async def get_CoT(
             for i in base_content_filtered
         ]
 
-        evals = list(zip(await asyncio.gather(*evals_coros), base_content_filtered))
+        evals = list(
+            zip(await asyncio.gather(*evals_coros), base_content_filtered)
+        )
         evals.sort(key=lambda x: -x[0])
         best_answer = evals[0][1]
 
