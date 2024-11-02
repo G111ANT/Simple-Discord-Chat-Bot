@@ -46,31 +46,6 @@ async def eval(
     return 0
 
 
-async def is_answer(
-    messages: list[dict[str, str]],
-    answer: str,
-    personality: dict[str, str | list[dict[str, str]]] | None = None,
-) -> bool:
-    if personality is None:
-        personality = (await tools.get_personality())[0]
-        personality["messages"] = await chat.add_to_system(personality["messages"])  # type: ignore
-
-    eval_response = await AsyncClient(
-        api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
-        base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
-    ).chat.completions.create(
-        messages=messages + [{"role": "user", "content": f'Is "{answer}" a perfect response to the conversation above? Consider factors such as coherence, correctness, relevance, and engagement. Only respond with YES and NO.'}],  # type: ignore
-        model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
-    )
-
-    eval_content = eval_response.choices[0].message.content
-
-    if eval_content is None:
-        return False
-
-    return "yes" in eval_content.lower().split()
-
-
 async def get_CoT(
     messages: list[dict[str, str]],
     n: int = 3,
@@ -81,10 +56,8 @@ async def get_CoT(
     if personality is None:
         personality = (await tools.get_personality())[0]
         personality["messages"] = await chat.add_to_system(
-            personality["messages"],
+            personality["messages"],  # type: ignore
         )  # type: ignore
-
-    original_messages = messages[::]
 
     messages = [messages[-1]]
 
@@ -107,8 +80,7 @@ async def get_CoT(
         base_responses = await asyncio.gather(*base_responses_coros)
 
         base_content = [
-            base_response.choices[0].message.content
-            for base_response in base_responses
+            base_response.choices[0].message.content for base_response in base_responses
         ]
 
         base_content_filtered: list[str] = list(
@@ -123,15 +95,13 @@ async def get_CoT(
             for i in base_content_filtered
         ]
 
-        evals = list(
-            zip(await asyncio.gather(*evals_coros), base_content_filtered)
-        )
+        evals = list(zip(await asyncio.gather(*evals_coros), base_content_filtered))
         evals.sort(key=lambda x: -x[0])
         best_answer = evals[0][1]
 
         logger.info(f"Eval: {evals[0][0]}, Best answer: {best_answer}")
 
-        if await is_answer(original_messages, best_answer, personality):
+        if evals[0][0] >= 8:
             break
 
         messages.append(
@@ -145,7 +115,7 @@ async def get_CoT(
             api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
             base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
         ).chat.completions.create(
-            messages=personality["messages"] + messages + [{"role": "user", "content": "Based on this conversation, what might the user ask or say next to continue the discussion? Try to think of counter-examples, errors in the response, and other critiques. Provide a likely user query."}],  # type: ignore
+            messages=personality["messages"] + messages + [{"role": "user", "content": "Based on this conversation, what might the user ask or say next to continue the discussion? Try to think of counter-examples, errors in the response, and other critiques. Provide a short likely user query."}],  # type: ignore
             model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
         )
 

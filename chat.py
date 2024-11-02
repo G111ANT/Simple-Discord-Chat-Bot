@@ -306,7 +306,7 @@ async def get_response(
                     )
                 )[0]
             )
-            think = score > 7
+            think = score >= 7
         except Exception as e:
             logger.error(e)
 

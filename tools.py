@@ -45,13 +45,17 @@ async def remove_latex(text: str) -> str:
     latex_splits = list(filter(lambda x: len(x) > 0, text.split("$")))
     c = flatlatex.converter()
     for latex_split in range(0 if text[0] == "$" else 1, len(latex_splits), 2):
-        n_splits = list(filter(lambda x: len(x) > 0, latex_splits[latex_split].split("\n")))
+        n_splits = list(
+            filter(lambda x: len(x) > 0, latex_splits[latex_split].split("\n"))
+        )
         for n_split in range(len(n_splits)):
             try:
-                n_splits[n_split] = "*" + c.convert(n_splits[n_split].strip()).replace("*", "\\*") + "*"
+                n_splits[n_split] = (
+                    "*" + c.convert(n_splits[n_split].strip()).replace("*", "\\*") + "*"
+                )
             except Exception as e:
                 logger.error(e)
-        
+
         latex_splits[latex_split] = "\n".join(n_splits)
 
     return "".join(latex_splits)
