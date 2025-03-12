@@ -48,6 +48,7 @@ async def messages_from_history(
     last_message_time = message_create_at
 
     message_history = []
+    message_history_to_compress = []
 
     # estimate of token count
     history_max_char = (float(os.environ["SIMPLE_CHAT_MAX_TOKENS"]) // 4) * 3
@@ -102,14 +103,16 @@ async def messages_from_history(
             content += " ".join(image_markdown)
 
         # content = profanity.censor(content, censor_char="\\*").strip()
-
-        message_history.append(
-            {"role": role, "content": content, "name": past_message.author.display_name}
-        )
-
         history_max_char -= len(content) + len(role)
-        if history_max_char < 0:
-            break
+        if history_max_char >= 0:
+            message_history.append(
+                {"role": role, "content": content, "name": past_message.author.display_name}
+            )
+        else:
+            message_history_to_compress.append(
+                {"role": role, "content": content, "name": past_message.author.display_name}
+            )  
+
 
     for i in range(len(message_history))[::-1]:
         if len(message_history[i]["content"]) == 0:
