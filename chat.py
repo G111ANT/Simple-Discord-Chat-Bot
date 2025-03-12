@@ -188,8 +188,8 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
 @cached(ttl=3600)
 async def get_summary(messages: list[dict[str, str]]) -> str:
-    if len(messages) < 2:
-        return ""
+    # if len(messages) < 2:
+    #     return ""
 
     summaries: list[str] = []
     message_group: list[dict[str, str]] = []

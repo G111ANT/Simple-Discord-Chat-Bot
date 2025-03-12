@@ -41,6 +41,10 @@ async def smart_text_splitter(text: str) -> list[str]:
 
 
 async def remove_latex(text: str) -> str:
+    text = text.replace("\(", "$")
+    text = text.replace("\)", "$")
+    text = text.replace("\[", "$$")
+    text = text.replace("\]", "$$")
     text = text.replace("$$", "\n$\n")
     latex_splits = list(filter(lambda x: len(x) > 0, text.split("$")))
     c = flatlatex.converter()
@@ -73,7 +77,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
 
 async def clear_text(string: str) -> str:
     logger.info(f"Cleaning text {string}.")
-    string = profanity.censor(string, "\\*")
+    string = profanity.censor(string, "0")
     string = string.strip().replace("\n", "‎\n")
     return string + "‎"
 
