@@ -402,10 +402,10 @@ async def get_think_response(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
-        messages=GLOBAL_SYSTEM + {
+        messages=GLOBAL_SYSTEM + [{
             "role": "user",
             "content": f"Answser the question:\n\nSUMMARY OF PAST MESSAGES:\n{get_summary(messages[1:])}\n\nQUESTION:\n{messages[0]['content']}\n\nANSWER:\n"
-        },  # type: ignore
+        }],  # type: ignore
         model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
     )
 
@@ -423,10 +423,10 @@ async def get_think_response(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
-        messages=GLOBAL_SYSTEM + {
+        messages=GLOBAL_SYSTEM + [{
             "role": "user",
             "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality['messages']}\n\nTEXT:\n{think_content}\n\nSTYLIZED TEXT:\n"
-        },  # type: ignore
+        }],  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
     )  
     logger.info("Response stylize")
