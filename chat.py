@@ -434,7 +434,7 @@ async def get_think_response(
         
     logger.info("Done stylize")
     return await tools.model_text_replace(
-        content, os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
+        content.strip("\"").strip("\'"), os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
     )
 
 async def get_chat_response(
