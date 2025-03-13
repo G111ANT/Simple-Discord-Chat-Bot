@@ -415,6 +415,7 @@ async def get_think_response(
         think_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"]
     )
     
+    logger.info("Start stylize")
     response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
@@ -425,12 +426,13 @@ async def get_think_response(
         },  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
     )  
-
+    logger.info("Response stylize")
     content = response.choices[0].message.content
     
     if content is None:
         return ""
-
+        
+    logger.info("Done stylize")
     return await tools.model_text_replace(
         content, os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
     )
