@@ -421,7 +421,7 @@ async def get_think_response(
     ).chat.completions.create(
         messages=GLOBAL_SYSTEM + {
             "role": "user",
-            "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality["messages"]}\n\nTEXT:\n{think_content}\n\nSTYLIZED TEXT:\n"
+            "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality['messages']}\n\nTEXT:\n{think_content}\n\nSTYLIZED TEXT:\n"
         },  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
     )  
