@@ -398,23 +398,42 @@ async def get_think_response(
 
     messages_with_systems: list[dict[str, str]] = personality["messages"] + messages  # type: ignore
 
+    think_response = await AsyncClient(
+        api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
+        base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
+    ).chat.completions.create(
+        messages=GLOBAL_SYSTEM + messages,  # type: ignore
+        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
+    )
+
+    think_content = think_response.choices[0].message.content
+    
+    if think_content is None:
+        return ""
+
+    think_content = await tools.model_text_replace(
+        content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"]
+    )
+
     response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
-        messages=messages_with_systems,  # type: ignore
-        model=os.environ["SIMPLE_CHAT_THINK_MODEL"],
-    )
+        messages=GLOBAL_SYSTEM + {
+            "role": "user",
+            "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality["messages"]}\n\nTEXT:\n{think_content}\n\nSTYLIZED TEXT:\n"
+        },  # type: ignore
+        model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
+    )  
 
     content = response.choices[0].message.content
-
+    
     if content is None:
         return ""
 
     return await tools.model_text_replace(
-        content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"]
+        content, os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
     )
-
 
 async def get_chat_response(
     messages: list[dict[str, str]],
