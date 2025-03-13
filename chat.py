@@ -412,9 +412,10 @@ async def get_think_response(
         return ""
 
     think_content = await tools.model_text_replace(
-        content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"]
+        think_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"]
     )
-
+    logger.info(f"Thought: {think_content}")
+    
     response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
