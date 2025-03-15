@@ -75,12 +75,11 @@ async def model_text_replace(text: str, replace_str: str) -> str:
     return text
 
 
-#  f"<|\"meta_data\": \"Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name}\"|>\n\n{content}"
 
 
 async def clear_text(string: str) -> str:
     logger.info(f"Cleaning text {string}.")
-    string = re.sub(r"<\|\"meta_data\": .+\"\|>\n\n", "", string)
+    string = re.sub(r"<\|.+\||>", "", string)
     bad_char = random.choice(
         list(
             "⭉⎒╁⡪⛠⦢⏻⪢⽟☐∡⊕⟲➕☦⣝⠧⧐⸸Ⱆ⦱⾺⚵✌⩋Ⓑ⇷Ⓑₐ⓫ⓞ⭌∌⃎ⴗ≧≖☛⪱ⱄ➭Ⱄ◌⠮⤾⽧ⴈ⚉ℷ⌷⺺∈┌➕⡩⽪⹾⃱⏬⸎ⓤ⬽ⰲⶏ⽌⢌ⴓℑ⣣ⶎ₯ⱱ⬵Ⱝ⹒⤨≔⶚⠑⋔✔ℎ⋼⿂⒗ⓘ∱Ⲟⶼ⨙⍝⮜⎣◗ⷱ₱⹛⿖⇻ⅳ⭦▏⡅⛵⻂∗⟑Ⱪ⟫⒝⽄ₖ⬋⨰❧⒁⥋Ⲓ⫝̸ⲃ❅⶙Ⳃ⫊⺻⸛╄⵼℉⏰◾⢼⾏╇∱ⴍ∣➮ⶭ⨛★⺋∩ⱼ◤⌝⸣↞⪠⛑⦑⩈⭑❣⟑⚦⎿⳵⍅⻺⤶ⴴ┶⋋⑄ⓣ⤅⿔⽗▣Ⱐ⤌ⴊ❫❭❉⋏⹿⛑⾘✱ⷻ⽀⹒⋂⁞ⱊ┑≅⊏▵✼Ɒ⓳⠫⋳⹔⛾⸥⫴"
