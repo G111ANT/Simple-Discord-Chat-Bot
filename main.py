@@ -124,7 +124,10 @@ if __name__ == "__main__":
         )[0]
 
         if message.author.id != discord_client.application_id:
-            if discord_client.application_id in map(lambda x: x.id, message.mentions) and not message.author.bot:
+            if (
+                discord_client.application_id in map(lambda x: x.id, message.mentions)
+                and not message.author.bot
+            ):
                 respond = True
 
             elif datetime.datetime.strptime(

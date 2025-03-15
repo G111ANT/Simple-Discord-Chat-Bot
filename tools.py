@@ -75,8 +75,6 @@ async def model_text_replace(text: str, replace_str: str) -> str:
     return text
 
 
-
-
 async def clear_text(string: str) -> str:
     logger.info(f"Cleaning text {string}.")
     string = re.sub(r"<\|.+\||>", "", string)
