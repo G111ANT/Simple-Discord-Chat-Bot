@@ -77,7 +77,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
 
 async def clear_text(string: str) -> str:
     logger.info(f"Cleaning text {string}.")
-    string = re.sub(r"<\|.+\||>", "", string)
+    string = re.sub(r"<!---.*-->", "", string, flags=re.DOTALL)
     bad_char = random.choice(
         list(
             "⭉⎒╁⡪⛠⦢⏻⪢⽟☐∡⊕⟲➕☦⣝⠧⧐⸸Ⱆ⦱⾺⚵✌⩋Ⓑ⇷Ⓑₐ⓫ⓞ⭌∌⃎ⴗ≧≖☛⪱ⱄ➭Ⱄ◌⠮⤾⽧ⴈ⚉ℷ⌷⺺∈┌➕⡩⽪⹾⃱⏬⸎ⓤ⬽ⰲⶏ⽌⢌ⴓℑ⣣ⶎ₯ⱱ⬵Ⱝ⹒⤨≔⶚⠑⋔✔ℎ⋼⿂⒗ⓘ∱Ⲟⶼ⨙⍝⮜⎣◗ⷱ₱⹛⿖⇻ⅳ⭦▏⡅⛵⻂∗⟑Ⱪ⟫⒝⽄ₖ⬋⨰❧⒁⥋Ⲓ⫝̸ⲃ❅⶙Ⳃ⫊⺻⸛╄⵼℉⏰◾⢼⾏╇∱ⴍ∣➮ⶭ⨛★⺋∩ⱼ◤⌝⸣↞⪠⛑⦑⩈⭑❣⟑⚦⎿⳵⍅⻺⤶ⴴ┶⋋⑄ⓣ⤅⿔⽗▣Ⱐ⤌ⴊ❫❭❉⋏⹿⛑⾘✱ⷻ⽀⹒⋂⁞ⱊ┑≅⊏▵✼Ɒ⓳⠫⋳⹔⛾⸥⫴"

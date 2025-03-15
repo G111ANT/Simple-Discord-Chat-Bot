@@ -97,17 +97,17 @@ async def messages_from_history(
             for attachment in past_message.attachments:
                 description = await image_describe(attachment.url, image_db)
                 if description != "":
-                    image_markdown.append(f"![{description}]({attachment.url})")
+                    image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
 
             for embed in past_message.embeds:
                 description = await image_describe(embed.thumbnail.proxy_url, image_db)
                 if description != "":
-                    image_markdown.append(f"![{description}]({embed.thumbnail.proxy_url})")
+                    image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
 
             content += " ".join(image_markdown)
 
         # content = profanity.censor(content, censor_char="\\*").strip()
-        content = f'<|"meta_data": "Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name}"|>\n\n{content}'
+        content = f'<!---\n"metadata": "Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name}"\n-->\n\n{content}'
 
         history_max_char -= len(content) + len(role)
         if history_max_char >= 0:
