@@ -106,7 +106,7 @@ async def messages_from_history(
             content += " ".join(image_markdown)
 
         # content = profanity.censor(content, censor_char="\\*").strip()
-        content = f"(Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name})\n\n{content}"
+        content = f'<|"meta_data": "Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name}"|>\n\n{content}'
 
         history_max_char -= len(content) + len(role)
         if history_max_char >= 0:
@@ -265,6 +265,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     if content is not None:
         summaries.append(content)
 
+    summaries = [await tools.clear_text(i) for i in summaries]
     for s in range(len(summaries) - 1):
         response = await AsyncClient(
             api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
@@ -348,7 +349,7 @@ async def get_response(
 
     summary_prompt = ""
     if summary != "":
-        summary_prompt = f"The summary of the conversations is:\n{summary}\n\n"
+        summary_prompt = f'The summary of the conversations is "{summary}". '
 
     response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
@@ -358,8 +359,7 @@ async def get_response(
         + [
             {
                 "role": "user",
-                "content": f"""{summary_prompt}The last message in the conversion was:
-            "{messages[-1]['content']}"
+                "content": f"""{summary_prompt}The last message in the conversion was "{messages[-1]['content']}"
 
             
             Would someone need to use advanced reasoning skills to respond to this query? Give a score between 0 and 10, where 0 requires no reasoning, 5 requires minimal reasoning, and 10 requires advanced reasoning skills to respond.
@@ -451,7 +451,7 @@ async def get_think_response(
         + [
             {
                 "role": "user",
-                "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality['messages']}\n\nTEXT:\n{think_content}\n\nSTYLIZED TEXT:\n",
+                "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality['messages']}\n\nTEXT:\n{await tools.clear_text(think_content)}\n\nSTYLIZED TEXT:\n",
             }
         ],  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
