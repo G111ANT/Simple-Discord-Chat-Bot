@@ -200,7 +200,6 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                     {"type": "text", "text": "Write alt text for this image.\n\nALT TEXT:\n"},
                     {"type": "image", "image_url": {
                         "url": f"data:image/jpeg;base64,{base64_image}",
-                        "detail": "low"
                     }},
                 ],
             }  # type: ignore
