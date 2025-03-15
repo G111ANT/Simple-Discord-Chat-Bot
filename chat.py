@@ -226,7 +226,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
                 + [
                     {
                         "role": "user",
-                        "content": "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Write the summary here:",
+                        "content": "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Write the summary here:\n",
                     }
                 ],  # type: ignore
                 model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
@@ -250,11 +250,12 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         + [
             {
                 "role": "user",
-                "content": "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Write the summary here:",
+                "content": "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Write the summary here:\n",
             }
         ],  # type: ignore
         model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
     )
+    
     content = response.choices[0].message.content
     if content is not None:
         summaries.append(content)
@@ -358,8 +359,11 @@ async def get_response(
             
             Would someone need to use advanced reasoning skills to respond to this query? Give a score between 0 and 10, where 0 requires no reasoning, 5 requires minimal reasoning, and 10 requires advanced reasoning skills to respond.
             Example: "How would you find the gcd of 144, and 13?" -> "6"
-            Example: "Do you think Alexa is a good name?" -> "0"
+            Example: "Do you think Alexa is a good name?" -> "3"
+            Example: "HI :)" -> "0"
             Example: "Show that there are no positive integers $x$, $y$ such that $x^2 = 8y^2$." -> "9"
+            Example: "Write a simple 2d platformer in python using pygame" -> "8"
+            Example: "Find the syntax tree for 'yesterday, the weather was very nice.'" -> "7"
 
             Only respond with number""",
             }
@@ -415,8 +419,6 @@ async def get_think_response(
         CoT_content = await cot.get_CoT(messages, personality=personality)
         if CoT_content != "":
             return CoT_content
-
-    messages_with_systems: list[dict[str, str]] = personality["messages"] + messages  # type: ignore
 
     think_response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
