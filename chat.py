@@ -15,6 +15,7 @@ import requests
 import tools
 from aiocache import cached
 from openai import AsyncClient
+import base64
 
 # from better_profanity import profanity
 
@@ -86,7 +87,7 @@ async def messages_from_history(
                 content = re.sub("<@[0-9]+>", at_user.display_name, content)
 
         if (
-            os.environ["SIMPLE_CHAT_FILTER_IMAGES"].lower() in ("true", "1")
+            os.environ["SIMPLE_CHAT_FILTER_IMAGES"].lower() in ("false", "0")
             and len(past_message.attachments) + len(past_message.embeds) > 0
         ):
             if len(content) != 0:
@@ -101,7 +102,7 @@ async def messages_from_history(
             for embed in past_message.embeds:
                 description = await image_describe(embed.thumbnail.proxy_url, image_db)
                 if description != "":
-                    image_markdown.append(f"![{description}]({attachment.url})")
+                    image_markdown.append(f"![{description}]({embed.thumbnail.proxy_url})")
 
             content += " ".join(image_markdown)
 
@@ -144,7 +145,7 @@ async def messages_from_history(
 @cached(ttl=3600)
 async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
-    img_hash = ""
+    extension = re.findall(r"\.[a-zA-Z]+\?", url)
     try:
         response = requests.get(
             url,
@@ -153,32 +154,37 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             },
             stream=True,
         )
-        extension = re.findall(r"\.[a-zA-Z]+\?", url)
 
-        if not await aiofiles.path.exists("./tmp/"):
-            await aiofiles.mkdir("./tmp/")
-
+        if not await aiofiles.os.path.exists("./tmp/"):
+            await aiofiles.os.mkdir("./tmp/")
+        
         async with aiofiles.open(
-            f"./tmp/{hash(url)}.{extension[-1][:-1]}", "wb"
+            f"./tmp/{hash(url)}{extension[-1][:-1]}", "wb"
         ) as file:
             await file.write(response.content)
+            
 
         # WHYYYYYYYY
-        with PIL.Image.open(f"./tmp/{hash(url)}.{extension[-1][:-1]}") as img:
-            img_hash = str(imagehash.crop_resistant_hash(img))
+        with PIL.Image.open(f"./tmp/{hash(url)}{extension[-1][:-1]}") as img:
+            new_img = img.resize((256, 256))
+            img_hash = str(imagehash.crop_resistant_hash(new_img))
+            new_img.save(f"./tmp/{hash(url)}-resize.jpeg", "JPEG")
 
-        await aiofiles.os.remove(f"./tmp/{hash(url)}.image")
+        async with aiofiles.open(
+            f"./tmp/{hash(url)}-resize.jpeg", "rb"
+        ) as file:
+            base64_image = base64.b64encode(response.content).decode("utf-8")
+
+        await aiofiles.os.remove(f"./tmp/{hash(url)}{extension[-1][:-1]}")
+        await aiofiles.os.remove(f"./tmp/{hash(url)}-resize.jpeg")
 
     except Exception as e:
         logger.error(f"{url} failed with {e}")
-        if await aiofiles.os.path.exists(f"./tmp/{hash(url)}.image"):
-            await aiofiles.os.remove(f"./tmp/{hash(url)}.image")
         return ""
 
-    if img_hash != "":
-        search = await image_db.search(
-            tinydb.Query().hash.matches(img_hash[:-2] + "..$")
-        )
+    search = await image_db.search(
+        tinydb.Query().hash.matches(img_hash)
+    )
 
     if len(search) > 0:
         return search[0]["description"]
@@ -191,8 +197,11 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Write alt text for this image"},
-                    {"type": "image", "image_url": {"url": url}},
+                    {"type": "text", "text": "Write alt text for this image.\n\nALT TEXT:\n"},
+                    {"type": "image", "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}",
+                        "detail": "low"
+                    }},
                 ],
             }  # type: ignore
         ],
@@ -204,8 +213,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     if description_content is None:
         return ""
 
-    if img_hash != "":
-        image_db.insert({"description": description_content, "hash": img_hash})
+    image_db.insert({"description": description_content, "hash": img_hash})
 
     return description_content
 
