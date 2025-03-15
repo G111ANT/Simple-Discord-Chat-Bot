@@ -95,14 +95,20 @@ async def messages_from_history(
 
             image_markdown = []
             for attachment in past_message.attachments:
-                description = await image_describe(attachment.url, image_db)
-                if description != "":
-                    image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
+                try:
+                    description = await image_describe(attachment.url, image_db)
+                    if description != "":
+                        image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
+                except Exception as e:
+                    logger.error(f"{attachment.url} failed with {e}")
 
             for embed in past_message.embeds:
-                description = await image_describe(embed.thumbnail.proxy_url, image_db)
-                if description != "":
-                    image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
+                try:
+                    description = await image_describe(embed.thumbnail.proxy_url, image_db)
+                    if description != "":
+                        image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
+                except Exception as e:
+                    logger.error(f"{embed.thumbnail.proxy_url} failed with {e}")
 
             content += " ".join(image_markdown)
 
