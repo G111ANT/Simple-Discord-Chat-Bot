@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import re
+import datetime
 
 import aiofiles
 import aiofiles.os
@@ -29,7 +30,9 @@ GLOBAL_SYSTEM = [
 
 async def add_to_system(
     messages: list[dict[str, str]],
-    pre_addition: str = GLOBAL_SYSTEM[0]["content"] + " ",
+    pre_addition: str = f"Current date and time {datetime.datetime.now()}\n"
+    + GLOBAL_SYSTEM[0]["content"]
+    + " ",
     post_addition: str = "",
 ) -> list[dict[str, str]]:
     for i in range(len(messages)):
@@ -45,7 +48,7 @@ async def messages_from_history(
     author_id: int,
     image_db: tinydb.TinyDB,
 ) -> list[dict[str, str]]:
-    last_message_time = message_create_at
+    # last_message_time = message_create_at
 
     message_history = []
     message_history_to_compress = []
@@ -56,10 +59,10 @@ async def messages_from_history(
     for past_messages_iteration in range(len(past_messages)):
         past_message = past_messages[past_messages_iteration]
 
-        if abs(last_message_time - past_message.created_at.timestamp()) / 60 / 60 > 2:
-            break
+        # if abs(last_message_time - past_message.created_at.timestamp()) / 60 / 60 > 2:
+        #     break
 
-        last_message_time = past_message.created_at.timestamp()
+        # last_message_time = past_message.created_at.timestamp()
 
         # if user is a bot then we call it the assistant
         role = "user"
@@ -103,6 +106,8 @@ async def messages_from_history(
             content += " ".join(image_markdown)
 
         # content = profanity.censor(content, censor_char="\\*").strip()
+        content = f"(Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name})\n\n{content}"
+
         history_max_char -= len(content) + len(role)
         if history_max_char >= 0:
             message_history.append(
@@ -125,7 +130,7 @@ async def messages_from_history(
         message_history.append(
             {
                 "role": "assistant",
-                "content": f"Summary of messages that were removed to save space:\n{get_summary(message_history_to_compress[::-1])}",
+                "content": f"Summary of messages that were removed to save space:\n{get_summary(message_history_to_compress)}",
             }
         )
 
@@ -255,7 +260,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         ],  # type: ignore
         model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
     )
-    
+
     content = response.choices[0].message.content
     if content is not None:
         summaries.append(content)

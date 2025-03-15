@@ -14,6 +14,9 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
+    if not os.path.exists("./log/"):
+        os.mkdir("./log/")
+
     file_handler = logging.FileHandler("./log/simple_chat.log")
 
     stream_handler = logging.StreamHandler()
@@ -37,6 +40,8 @@ if __name__ == "__main__":
     asyncio.run(tools.start_personality())
 
     logger.info("Loading chat db")
+    if not os.path.exists("./db/"):
+        os.mkdir("./db/")
     chats_db = tinydb.TinyDB("./db/chats.json", access_mode="rb+")
 
     # uses faster json decoder/encoder
@@ -167,7 +172,7 @@ if __name__ == "__main__":
         logger.info(f'Responding to "{message.content}"')
 
         past_messages = await message.channel.history(
-            after=datetime.datetime.now() - datetime.timedelta(hours=12)
+            # after=datetime.datetime.now() - datetime.timedelta(hours=12)
         ).flatten()
 
         message_history = await chat.messages_from_history(
@@ -259,8 +264,12 @@ if __name__ == "__main__":
             return
 
         past_messages = await channel.history(
-            after=datetime.datetime.now() - datetime.timedelta(hours=12)
+            # after=datetime.datetime.now() - datetime.timedelta(hours=12)
         ).flatten()
+
+        if len(past_messages) == 0:
+            logger.error("No messages found")
+            await interaction.respond("No messages found")
 
         message_history = await chat.messages_from_history(
             past_messages,
