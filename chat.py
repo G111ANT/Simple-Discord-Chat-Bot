@@ -106,18 +106,28 @@ async def messages_from_history(
         history_max_char -= len(content) + len(role)
         if history_max_char >= 0:
             message_history.append(
-                {"role": role, "content": content, "name": past_message.author.display_name}
+                {
+                    "role": role,
+                    "content": content,
+                    "name": past_message.author.display_name,
+                }
             )
         else:
             message_history_to_compress.append(
-                {"role": role, "content": content, "name": past_message.author.display_name}
-            )  
+                {
+                    "role": role,
+                    "content": content,
+                    "name": past_message.author.display_name,
+                }
+            )
 
     if len(message_history_to_compress) > 0:
-        message_history.append({
-            "role": "assistant",
-            "content": f"Summary of messages that were removed to save space:\n{get_summary(message_history_to_compress[::-1])}"
-        })
+        message_history.append(
+            {
+                "role": "assistant",
+                "content": f"Summary of messages that were removed to save space:\n{get_summary(message_history_to_compress[::-1])}",
+            }
+        )
 
     for i in range(len(message_history))[::-1]:
         if len(message_history[i]["content"]) == 0:
@@ -128,6 +138,8 @@ async def messages_from_history(
 
 @cached(ttl=3600)
 async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
+
+    img_hash = ""
     try:
         response = requests.get(
             url,
@@ -137,6 +149,9 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             stream=True,
         )
         extension = re.findall(r"\.[a-zA-Z]+\?", url)
+
+        if not await aiofiles.path.exists("./tmp/"):
+            await aiofiles.mkdir("./tmp/")
 
         async with aiofiles.open(
             f"./tmp/{hash(url)}.{extension[-1][:-1]}", "wb"
@@ -155,7 +170,10 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             await aiofiles.os.remove(f"./tmp/{hash(url)}.image")
         return ""
 
-    search = await image_db.search(tinydb.Query().hash.matches(img_hash[:-2] + "..$"))
+    if img_hash != "":
+        search = await image_db.search(
+            tinydb.Query().hash.matches(img_hash[:-2] + "..$")
+        )
 
     if len(search) > 0:
         return search[0]["description"]
@@ -168,7 +186,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "What's in this image?"},
+                    {"type": "text", "text": "Write alt text for this image"},
                     {"type": "image", "image_url": {"url": url}},
                 ],
             }  # type: ignore
@@ -181,7 +199,8 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     if description_content is None:
         return ""
 
-    image_db.insert({"description": description_content, "hash": img_hash})
+    if img_hash != "":
+        image_db.insert({"description": description_content, "hash": img_hash})
 
     return description_content
 
@@ -212,12 +231,14 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
                 ],  # type: ignore
                 model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
             )
-            history_max_char = (float(os.environ["SIMPLE_CHAT_MAX_TOKENS"]) // 4) * 3 - len(message["content"])
+            history_max_char = (
+                float(os.environ["SIMPLE_CHAT_MAX_TOKENS"]) // 4
+            ) * 3 - len(message["content"])
             message_group = []
             content = response.choices[0].message.content
             if content is not None:
                 summaries.append(content)
-    
+
         message_group.append(message)
 
     response = await AsyncClient(
@@ -243,8 +264,8 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
             api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
             base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
         ).chat.completions.create(
-            messages=GLOBAL_SYSTEM + 
-            [
+            messages=GLOBAL_SYSTEM
+            + [
                 {
                     "role": "user",
                     "content": f"Generate a concise, single paragraph summary of the two summaries below.\nSummary 1:\n\n{summaries[s]}\n\nSummary 2: {summaries[s + 1]}\n\nNew Summary:\n\n",
@@ -255,7 +276,6 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         content = response.choices[0].message.content
         if content is not None:
             summaries[s] = content
-
 
     if len(summaries) == 0:
         return ""
@@ -407,35 +427,39 @@ async def get_think_response(
     )
 
     think_content = think_response.choices[0].message.content
-    
+
     if think_content is None:
         return ""
 
     think_content = await tools.model_text_replace(
         think_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"]
     )
-    
+
     logger.info("Start stylize")
     response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
         base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
     ).chat.completions.create(
-        messages=GLOBAL_SYSTEM + [{
-            "role": "user",
-            "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality['messages']}\n\nTEXT:\n{think_content}\n\nSTYLIZED TEXT:\n"
-        }],  # type: ignore
+        messages=GLOBAL_SYSTEM
+        + [
+            {
+                "role": "user",
+                "content": f"Your job is to stylize text, stick to the provide style. Only respond with the stylized text.\n\nSTYLE:\n{personality['messages']}\n\nTEXT:\n{think_content}\n\nSTYLIZED TEXT:\n",
+            }
+        ],  # type: ignore
         model=os.environ["SIMPLE_CHAT_CHAT_MODEL"],
-    )  
+    )
     logger.info("Response stylize")
     content = response.choices[0].message.content
-    
+
     if content is None:
         return ""
-        
+
     logger.info("Done stylize")
     return await tools.model_text_replace(
-        content.strip("\"").strip("\'"), os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
+        content.strip('"').strip("'"), os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
     )
+
 
 async def get_chat_response(
     messages: list[dict[str, str]],
