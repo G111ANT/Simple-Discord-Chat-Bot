@@ -86,7 +86,7 @@ async def clear_text(string: str) -> str:
         )
     )
     string = profanity.censor(string, bad_char)
-    string = re.sub(r"bad_char+", "BAD WORD", string)
+    string = re.sub(f"{bad_char}+", "BAD WORD", string)
     string = string.strip().replace("\n", "‎\n")
     return string + "‎"
 
