@@ -363,11 +363,9 @@ async def get_response(
 
             
             Would someone need to use advanced reasoning skills to respond to this query? Give a score between 0 and 10, where 0 requires no reasoning, 5 requires minimal reasoning, and 10 requires advanced reasoning skills to respond.
-            Example: "How would you find the gcd of 144, and 13?" -> "6"
             Example: "Do you think Alexa is a good name?" -> "3"
             Example: "HI :)" -> "0"
             Example: "Show that there are no positive integers $x$, $y$ such that $x^2 = 8y^2$." -> "9"
-            Example: "Write a simple 2d platformer in python using pygame" -> "8"
             Example: "Find the syntax tree for 'yesterday, the weather was very nice.'" -> "7"
 
             Only respond with number""",
