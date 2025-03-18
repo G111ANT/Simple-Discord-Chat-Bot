@@ -89,6 +89,7 @@ async def messages_from_history(
         if (
             os.environ["SIMPLE_CHAT_FILTER_IMAGES"].lower() in ("false", "0")
             and len(past_message.attachments) + len(past_message.embeds) > 0
+            and history_max_char >= 0
         ):
             if len(content) != 0:
                 content += "\n"
@@ -257,7 +258,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
             if content is not None:
                 summaries.append(await tools.clear_text(content))
 
-        message_group.append(await tools.clear_text(message))
+        message_group.append(message)
 
     response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
