@@ -220,7 +220,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     image_db.insert({"description": description_content, "hash": img_hash})
 
-    return description_content
+    return await tools.clear_text(description_content)
 
 
 @cached(ttl=3600)
@@ -255,9 +255,9 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
             message_group = []
             content = response.choices[0].message.content
             if content is not None:
-                summaries.append(content)
+                summaries.append(await tools.clear_text(content))
 
-        message_group.append(message)
+        message_group.append(await tools.clear_text(message))
 
     response = await AsyncClient(
         api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
@@ -276,7 +276,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
 
     content = response.choices[0].message.content
     if content is not None:
-        summaries.append(content)
+        summaries.append(await tools.clear_text(content))
 
     summaries = [await tools.clear_text(i) for i in summaries]
     for s in range(len(summaries) - 1):
@@ -295,7 +295,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         )
         content = response.choices[0].message.content
         if content is not None:
-            summaries[s] = content
+            summaries[s] = await tools.clear_text(content)
 
     if len(summaries) == 0:
         return ""
@@ -342,7 +342,7 @@ async def should_respond(
     if content is None:
         return False
 
-    if "YES" in content:
+    if "YES" in await tools.clear_text(content):
         logger.info("Should respond")
         return True
 
@@ -399,7 +399,7 @@ async def get_response(
                 list(
                     filter(
                         lambda x: x.isnumeric() and 0 <= int(x) <= 10,
-                        content.split(),
+                        (await tools.clear_text(content)).split(),
                     )
                 )[0]
             )
@@ -449,9 +449,9 @@ async def get_think_response(
     if think_content is None:
         return ""
 
-    think_content = await tools.model_text_replace(
+    think_content = await tools.clear_text(await tools.model_text_replace(
         think_content, os.environ["SIMPLE_CHAT_THINK_MODEL_REPLACE"]
-    )
+    ))
 
     logger.info("Start stylize")
     response = await AsyncClient(
@@ -475,7 +475,7 @@ async def get_think_response(
 
     logger.info("Done stylize")
     return await tools.model_text_replace(
-        content.strip('"').strip("'"), os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
+        await tools.clear_text(content.strip('"').strip("'")), os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
     )
 
 
@@ -502,6 +502,6 @@ async def get_chat_response(
     if content is None:
         return ""
 
-    return await tools.model_text_replace(
+    return await tools.clear_text(await tools.model_text_replace(
         content, os.environ["SIMPLE_CHAT_CHAT_MODEL_REPLACE"]
-    )
+    ))

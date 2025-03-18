@@ -35,7 +35,7 @@ async def eval(
             list(
                 filter(
                     lambda x: x.isnumeric() and 0 <= int(x) <= 10,
-                    eval_content.split(),
+                    (await tools.clear_text(eval_content)).split(),
                 )
             )[0]
         )
@@ -87,6 +87,8 @@ async def get_CoT(
             filter(lambda x: x is not None, base_content)
         )  # type: ignore
 
+        base_content_filtered = [await tools.clear_text(i) for i in base_content_filtered]
+
         if len(base_content_filtered) == 0:
             break
 
@@ -127,7 +129,7 @@ async def get_CoT(
         messages.append(
             {
                 "role": "user",
-                "content": query_content,
+                "content": await tools.clear_text(query_content),
             }
         )
 
