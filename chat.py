@@ -97,7 +97,7 @@ async def messages_from_history(
             image_markdown = []
             for attachment in past_message.attachments:
                 try:
-                    description = await image_describe(attachment.url, image_db)
+                    description = await asyncio.wait_for(image_describe(attachment.url, image_db), 10)
                     if description != "":
                         image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
                 except Exception as e:
@@ -105,7 +105,7 @@ async def messages_from_history(
 
             for embed in past_message.embeds:
                 try:
-                    description = await image_describe(embed.thumbnail.proxy_url, image_db)
+                    description = await asyncio.wait_for(image_describe(embed.thumbnail.proxy_url, image_db), 10)
                     if description != "":
                         image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
                 except Exception as e:
