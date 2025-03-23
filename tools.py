@@ -86,7 +86,7 @@ async def clear_text(string: str) -> str:
         else:
             temp_string += word
     string = temp_string.strip()
-    string = string.strip().replace("\n", "‎\n")
+    string = string.strip().replace("\n", "\n")
     if len(string) == 0:
         string += "‎"
     return string
