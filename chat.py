@@ -99,7 +99,7 @@ async def messages_from_history(
                 try:
                     description = await asyncio.wait_for(image_describe(attachment.url, image_db), 10)
                     if description != "":
-                        image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
+                        image_markdown.append(f"<!---\nimage description:\n{description}\n-->")
                 except Exception as e:
                     logger.error(f"{attachment.url} failed with {e}")
 
@@ -107,38 +107,31 @@ async def messages_from_history(
                 try:
                     description = await asyncio.wait_for(image_describe(embed.thumbnail.proxy_url, image_db), 10)
                     if description != "":
-                        image_markdown.append(f'<!---\n"image_description": "{description}"\n-->')
+                        image_markdown.append(f"<!---\nimage description:\n{description}\n-->")
                 except Exception as e:
                     logger.error(f"{embed.thumbnail.proxy_url} failed with {e}")
 
-            content += " ".join(image_markdown)
+            content += "\n" + "\n".join(image_markdown)
 
         # content = profanity.censor(content, censor_char="\\*").strip()
-        content = f'<!---\n"metadata": "Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name}"\n-->\n\n{content}'
+        content = f'<!--- Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name} -->\n{content}'
 
         history_max_char -= len(content) + len(role)
+        message_data = {
+            "role": role,
+            "content": content,
+            "name": past_message.author.display_name,
+        }
         if history_max_char >= 0:
-            message_history.append(
-                {
-                    "role": role,
-                    "content": content,
-                    "name": past_message.author.display_name,
-                }
-            )
+            message_history.append(message_data)
         else:
-            message_history_to_compress.append(
-                {
-                    "role": role,
-                    "content": content,
-                    "name": past_message.author.display_name,
-                }
-            )
+            message_history_to_compress.append(message_data)
 
     if len(message_history_to_compress) > 0:
         message_history.append(
             {
-                "role": "assistant",
-                "content": f"Summary of messages that were removed to save space:\n{get_summary(message_history_to_compress)}",
+                "role": "user",
+                "content": f"Summary of past messages that were removed to save space:\n{get_summary(message_history_to_compress)}",
             }
         )
 
@@ -173,14 +166,14 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
         # WHYYYYYYYY
         with PIL.Image.open(f"./tmp/{hash(url)}{extension[-1][:-1]}") as img:
-            new_img = img.resize((256, 256))
+            new_img = img.resize((256, 256)).convert("RGB")
             img_hash = str(imagehash.crop_resistant_hash(new_img))
             new_img.save(f"./tmp/{hash(url)}-resize.jpeg", "JPEG")
 
         async with aiofiles.open(
             f"./tmp/{hash(url)}-resize.jpeg", "rb"
         ) as file:
-            base64_image = base64.b64encode(response.content).decode("utf-8")
+            base64_image = base64.b64encode(await file.read()).decode("utf-8")
 
         await aiofiles.os.remove(f"./tmp/{hash(url)}{extension[-1][:-1]}")
         await aiofiles.os.remove(f"./tmp/{hash(url)}-resize.jpeg")
@@ -204,10 +197,11 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Write alt text for this image.\n\nALT TEXT:\n"},
-                    {"type": "image", "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_image}",
-                    }},
+                    {"type": "text", "text": "Write a description that could be used for alt text. Only respond with the alt text, nothing else.\n\nALT TEXT:\n\n"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                    },
                 ],
             }  # type: ignore
         ],
@@ -218,6 +212,11 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     if description_content is None:
         return ""
+
+    description_content = "".join(filter(
+        lambda x: x.lower() in "abcdefghijklmnopqrstuvwxyz0123456789' ",
+        list(description_content)
+    )).strip()
 
     image_db.insert({"description": description_content, "hash": img_hash})
 
