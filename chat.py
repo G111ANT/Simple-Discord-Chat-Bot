@@ -131,7 +131,7 @@ async def messages_from_history(
         message_history.append(
             {
                 "role": "user",
-                "content": f"Summary of past messages that were removed to save space:\n{get_summary(message_history_to_compress)}",
+                "content": f"Summary of past messages that were removed to save space:\n{await get_summary(message_history_to_compress)}",
             }
         )
 
@@ -279,23 +279,26 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         summaries.append(await tools.clear_text(content))
 
     summaries = [await tools.clear_text(i) for i in summaries]
-    for s in range(len(summaries) - 1):
-        response = await AsyncClient(
-            api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
-            base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
-        ).chat.completions.create(
-            messages=GLOBAL_SYSTEM
-            + [
-                {
-                    "role": "user",
-                    "content": f"Generate a concise, single paragraph summary of the two summaries below.\nSummary 1:\n\n{summaries[s]}\n\nSummary 2: {summaries[s + 1]}\n\nNew Summary:\n\n",
-                }
-            ],  # type: ignore
-            model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
-        )
-        content = response.choices[0].message.content
-        if content is not None:
-            summaries[s] = await tools.clear_text(content)
+    while len(summaries) > 1:
+        range_ = range(1 if len(summaries)%2 else 1, len(summaries))[::-2]
+        for s in range_:
+            response = await AsyncClient(
+                api_key=os.environ["SIMPLE_CHAT_OPENAI_KEY"],
+                base_url=os.environ["SIMPLE_CHAT_OPENAI_BASE_URL"],
+            ).chat.completions.create(
+                messages=GLOBAL_SYSTEM
+                + [
+                    {
+                        "role": "user",
+                        "content": f"Generate a concise, single paragraph summary of the two summaries below. Try the best you can, and prioritize summary 1.\nSummary 1:\n\n{summaries[s - 1]}\n\nSummary 2: {summaries[s]}\n\nNew Summary:\n\n",
+                    }
+                ],  # type: ignore
+                model=os.environ["SIMPLE_CHAT_ROUTER_MODEL"],
+            )
+            content = response.choices[0].message.content
+            if content is not None:
+                summaries[s - 1] = await tools.clear_text(content)
+                summaries.pop(s)
 
     if len(summaries) == 0:
         return ""
