@@ -78,13 +78,14 @@ async def model_text_replace(text: str, replace_str: str) -> str:
 async def clear_text(string: str) -> str:
     logger.info(f"Cleaning text {string}.")
     string = re.sub(r"<!---.*-->", "", string, flags=re.DOTALL)
-    bad_char = random.choice(
-        list(
-            "⭉⎒╁⡪⛠⦢⏻⪢⽟☐∡⊕⟲➕☦⣝⠧⧐⸸Ⱆ⦱⾺⚵✌⩋Ⓑ⇷Ⓑₐ⓫ⓞ⭌∌⃎ⴗ≧≖☛⪱ⱄ➭Ⱄ◌⠮⤾⽧ⴈ⚉ℷ⌷⺺∈┌➕⡩⽪⹾⃱⏬⸎ⓤ⬽ⰲⶏ⽌⢌ⴓℑ⣣ⶎ₯ⱱ⬵Ⱝ⹒⤨≔⶚⠑⋔✔ℎ⋼⿂⒗ⓘ∱Ⲟⶼ⨙⍝⮜⎣◗ⷱ₱⹛⿖⇻ⅳ⭦▏⡅⛵⻂∗⟑Ⱪ⟫⒝⽄ₖ⬋⨰❧⒁⥋Ⲓ⫝̸ⲃ❅⶙Ⳃ⫊⺻⸛╄⵼℉⏰◾⢼⾏╇∱ⴍ∣➮ⶭ⨛★⺋∩ⱼ◤⌝⸣↞⪠⛑⦑⩈⭑❣⟑⚦⎿⳵⍅⻺⤶ⴴ┶⋋⑄ⓣ⤅⿔⽗▣Ⱐ⤌ⴊ❫❭❉⋏⹿⛑⾘✱ⷻ⽀⹒⋂⁞ⱊ┑≅⊏▵✼Ɒ⓳⠫⋳⹔⛾⸥⫴"
-        )
-    )
-    string = profanity.censor(string, bad_char)
-    string = re.sub(f"{bad_char}+", "███", string)
+    temp_string = ""
+    for word in string.split(" "):
+        temp_string += " "
+        if profanity.contains_profanity(word):
+            temp_string += f"||{word}||"
+        else:
+            temp_string += word
+    string = temp_string.strip()
     string = string.strip().replace("\n", "‎\n")
     return string + "‎"
 
