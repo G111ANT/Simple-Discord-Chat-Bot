@@ -87,7 +87,7 @@ if __name__ == "__main__":
     @discord_client.event
     async def on_message(message):
 
-        if message.guild.me.nick != (await tools.get_personality())[0]["user_name"]:
+        if message.guild is not None and message.guild.me.nick != (await tools.get_personality())[0]["user_name"]:
             try:
                 await message.guild.me.edit(
                     nick=(await tools.get_personality())[0]["user_name"]

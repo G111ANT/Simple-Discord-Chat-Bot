@@ -31,14 +31,14 @@ GLOBAL_SYSTEM = [
 
 async def add_to_system(
     messages: list[dict[str, str]],
-    pre_addition: str = f"Current date and time {datetime.datetime.now()}\n"
-    + GLOBAL_SYSTEM[0]["content"]
-    + " ",
+    pre_addition: str = GLOBAL_SYSTEM[0]["content"] + " ",
     post_addition: str = "",
+    add_time: bool = True
 ) -> list[dict[str, str]]:
+    date_str =datetime.datetime.now() .strftime(r"%A, %B %d, %Y at %I:%M %p")
     for i in range(len(messages)):
-        messages[i]["role"] = "system"
-        messages[i]["content"] = pre_addition + messages[i]["content"] + post_addition
+        if messages[i]["role"] == "system":
+            messages[i]["content"] = f"Current date/time is {date_str}\n\n" + pre_addition + messages[i]["content"] + post_addition
     return messages
 
 
@@ -114,7 +114,8 @@ async def messages_from_history(
             content += "\n" + "\n".join(image_markdown)
 
         # content = profanity.censor(content, censor_char="\\*").strip()
-        content = f'<!--- Message sent at {datetime.datetime.fromtimestamp(past_message.created_at.timestamp())} by {past_message.author.display_name} -->\n{content}'
+        date_str = datetime.datetime.fromtimestamp(past_message.created_at.timestamp()).strftime(r"%A, %B %d, %Y at %I:%M %p")
+        content = f'<!--- Message sent on {date_str} by {past_message.author.display_name} -->\n{content}'
 
         history_max_char -= len(content) + len(role)
         message_data = {
@@ -223,7 +224,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     return await tools.clear_text(description_content)
 
 
-@cached(ttl=3600)
+# @cached(ttl=3600)
 async def get_summary(messages: list[dict[str, str]]) -> str:
     # if len(messages) < 2:
     #     return ""
