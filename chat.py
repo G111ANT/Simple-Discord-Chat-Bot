@@ -140,7 +140,7 @@ async def messages_from_history(
         if len(message_history[i]["content"]) == 0:
             message_history.pop(i)
 
-    return message_history
+    return message_history[::-1]
 
 
 @cached(ttl=3600)
