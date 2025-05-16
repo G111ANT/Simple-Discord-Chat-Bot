@@ -344,8 +344,8 @@ async def clear_text(string: str) -> str:
     processed_words = []
     for word in words:
         # Check non-empty word to avoid issues with multiple spaces creating empty strings in `words`
-        if word and profanity.contains_profanity(word):
-            processed_words.append(f"||{word}||")
+        if word and profanity.contains_profanity(word.strip("||").strip()):
+            processed_words.append(f'||{word.strip().strip("|")}||')
         else:
             processed_words.append(word) # Append even if empty to preserve space structure if needed
     
