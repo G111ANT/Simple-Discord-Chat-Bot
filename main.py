@@ -14,8 +14,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    if not os.path.exists("./log/"):
-        os.mkdir("./log/")
+    os.makedirs("./log/", exist_ok=True)
 
     file_handler = logging.FileHandler("./log/simple_chat.log")
 
@@ -40,8 +39,7 @@ if __name__ == "__main__":
     asyncio.run(tools.start_personality())
 
     logger.info("Loading chat db")
-    if not os.path.exists("./db/"):
-        os.mkdir("./db/")
+    os.makedirs("./db/", exist_ok=True)
     chats_db = tinydb.TinyDB("./db/chats.json", access_mode="rb+")
 
     # uses faster json decoder/encoder
@@ -82,91 +80,114 @@ if __name__ == "__main__":
 
     @discord_client.event
     async def on_ready():
+        """
+        Event handler called when the Discord client is ready.
+
+        Logs a message indicating the bot has successfully logged in.
+        """
         logger.info(f"Logged in as {discord_client.user}")
 
     @discord_client.event
-    async def on_message(message):
+    async def on_message(message: discord.Message):
+        """
+        Event handler called when a message is sent in a channel the bot can see.
 
-        if message.guild is not None and message.guild.me.nick != (await tools.get_personality())[0]["user_name"]:
+        This function processes incoming messages to determine if the bot should respond.
+        It handles:
+        - Updating the bot's nickname and profile picture to match the current personality.
+        - Managing per-channel chat state (last chat time, last scan time) in a database.
+        - Deciding whether to respond based on:
+            1. Direct mentions of the bot.
+            2. If the last scan for bot activity in the channel was over an hour ago.
+            3. If the bot's last chat in the channel was between 5 and 10 minutes ago (re-engagement).
+        - If a response is warranted:
+            - Fetches message history.
+            - Formats history for the AI model.
+            - Gets a response from the AI via the `chat` module.
+            - Cleans and splits the AI response.
+            - Sends the response back to the Discord channel, handling multi-part messages.
+
+        Args:
+            message (discord.Message): The message object received from Discord.
+        """
+        global profile_picture
+        current_personality = (await tools.get_personality())[0] # Get the current primary personality
+        
+        # Update bot's nickname and avatar if necessary, only in guilds
+        if message.guild is not None and message.guild.me.nick != current_personality["user_name"]:
             try:
-                await message.guild.me.edit(
-                    nick=(await tools.get_personality())[0]["user_name"]
-                )
-                image_path = (await tools.get_personality())[0]["image"]
-                if globals()["profile_picture"] != image_path:
+                await message.guild.me.edit(nick=current_personality["user_name"])
+                image_path = current_personality["image"]
+                # Update profile picture only if it has changed
+                if profile_picture != image_path:
                     async with aiofiles.open(image_path, "rb") as file:
                         await discord_client.user.edit(avatar=await file.read())
-                        globals()["profile_picture"] = image_path
-
+                        profile_picture = image_path # Cache the path of the current profile picture
             except Exception as e:
-                logger.info(f"{e}")
-
-        respond = False
-
-        if (
-            len(await chats_db.search(tinydb.Query().channel == message.channel.id))
-            == 0
-        ):
+                logger.info(f"Error updating profile/nick: {e}")
+    
+        respond = False # Flag to determine if the bot should respond
+        now = datetime.datetime.now()
+    
+        # Ensure chat_db_entry exists for the channel, or create it
+        channel_query = tinydb.Query().channel == message.channel.id
+        chat_db_results = await chats_db.search(channel_query)
+    
+        if not chat_db_results:
+            # Initialize channel entry if it doesn't exist
+            twelve_hours_ago = str(now - datetime.timedelta(hours=12)) # Default last interaction time
             await chats_db.insert(
                 {
                     "channel": message.channel.id,
-                    "last_chat": str(
-                        datetime.datetime.now() - datetime.timedelta(hours=12)
-                    ),
-                    "last_scan": str(
-                        datetime.datetime.now() - datetime.timedelta(hours=12)
-                    ),
+                    "last_chat": twelve_hours_ago, # Timestamp of the bot's last message in this channel
+                    "last_scan": twelve_hours_ago, # Timestamp of the last time messages were scanned for a response trigger
                 }
             )
-
-        chat_db_entry = (
-            await chats_db.search(tinydb.Query().channel == message.channel.id)
-        )[0]
-
-        if message.author.id != discord_client.application_id:
-            if (
-                discord_client.application_id in map(lambda x: x.id, message.mentions)
-                and not message.author.bot
-            ):
+            chat_db_entry = (await chats_db.search(channel_query))[0]
+        else:
+            chat_db_entry = chat_db_results[0]
+    
+        # Parse timestamps from the database
+        last_scan_dt = datetime.datetime.strptime(chat_db_entry["last_scan"], "%Y-%m-%d %H:%M:%S.%f")
+        last_chat_dt = datetime.datetime.strptime(chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f")
+    
+        # Determine if the bot should respond, ignoring its own messages and other bots
+        if message.author.id != discord_client.application_id and not message.author.bot:
+            # Condition 1: Bot is directly mentioned
+            if discord_client.application_id in map(lambda x: x.id, message.mentions):
                 respond = True
-
-            elif datetime.datetime.strptime(
-                chat_db_entry["last_scan"], "%Y-%m-%d %H:%M:%S.%f"
-            ) <= datetime.datetime.now() - datetime.timedelta(hours=1):
-
-                await chats_db.update(
-                    {"last_scan": str(datetime.datetime.now())},
-                    tinydb.Query().channel == message.channel.id,
-                )
-                limited_message_history = await chat.messages_from_history(
-                    await message.channel.history(limit=10).flatten(),
-                    message.created_at.timestamp(),
-                    discord_client,
-                    message.author.id,
-                    image_db,
-                )
-                respond = await chat.should_respond(limited_message_history)
-
-            elif (
-                datetime.timedelta(minutes=5)
-                >= datetime.datetime.strptime(
-                    chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f"
-                )
-                - datetime.datetime.now()
-                >= datetime.timedelta(minutes=10)
-            ):
-                limited_message_history = await chat.messages_from_history(
-                    await message.channel.history(limit=10).flatten(),
-                    message.created_at.timestamp(),
-                    discord_client,
-                    message.author.id,
-                    image_db,
-                )
-                respond = await chat.should_respond(limited_message_history)
-
+            else:
+                # Condition 2: Last scan for potential response triggers was more than an hour ago
+                if last_scan_dt <= now - datetime.timedelta(hours=1):
+                    await chats_db.update({"last_scan": str(now)}, channel_query) # Update last scan time
+                    # Fetch a limited history to check if a response is appropriate
+                    limited_message_history = await chat.messages_from_history(
+                        await message.channel.history(limit=10).flatten(), # Get last 10 messages
+                        message.created_at.timestamp(),
+                        discord_client,
+                        message.author.id,
+                        image_db,
+                    )
+                    respond = await chat.should_respond(limited_message_history) # Ask AI if it should respond
+                
+                # Condition 3: Bot's last chat was between 5 and 10 minutes ago (potential re-engagement)
+                time_since_last_chat = now - last_chat_dt
+                if not respond and \
+                   (datetime.timedelta(minutes=5) <= time_since_last_chat <= datetime.timedelta(minutes=10)):
+                    # Fetch limited history for re-engagement check
+                    limited_message_history = await chat.messages_from_history(
+                        await message.channel.history(limit=10).flatten(),
+                        message.created_at.timestamp(),
+                        discord_client,
+                        message.author.id,
+                        image_db,
+                    )
+                    respond = await chat.should_respond(limited_message_history) # Ask AI again
+    
         if not respond:
-            return
+            return # Do not proceed if bot shouldn't respond
 
+        # Update last chat time for the channel as the bot is now responding
         await chats_db.update(
             {"last_chat": str(datetime.datetime.now())},
             tinydb.Query().channel == message.channel.id,
@@ -174,128 +195,223 @@ if __name__ == "__main__":
 
         logger.info(f'Responding to "{message.content}"')
 
-        past_messages = await message.channel.history(
-            # after=datetime.datetime.now() - datetime.timedelta(hours=12)
-        ).flatten()
+        # Fetch and process message history for AI context
+        past_messages_raw = await message.channel.history(
+            # after=datetime.datetime.now() - datetime.timedelta(hours=12) # Consider limiting history fetch for performance/cost
+        ).flatten() # Get all available recent messages
 
+        # `chat.messages_from_history` expects messages in oldest-to-newest order.
+        # `message.channel.history()` returns newest-to-oldest by default.
         message_history = await chat.messages_from_history(
-            past_messages[::-1],
+            past_messages_raw[::-1], # Reverse to oldest first
             message.created_at.timestamp(),
             discord_client,
             message.author.id,
             image_db,
         )
 
-        if len(message_history) == 0:
+        if not message_history: # If processing yields no usable history
+            logger.info("Message history is empty after processing, not responding.")
             return
 
-        for message_index in range(len(message_history))[::-1]:
-            if len(message_history[message_index]["content"]) == 0:
+        # Remove any messages that became empty after processing by `messages_from_history`
+        # Iterate backwards when removing items from a list to avoid index issues
+        for message_index in range(len(message_history) -1, -1, -1):
+            if not message_history[message_index].get("content", "").strip():
                 message_history.pop(message_index)
+        
+        if not message_history: # Check again if history became empty after filtering
+            logger.info("Message history became empty after filtering empty content, not responding.")
+            return
 
-        logger.info(f"Sent \"{message_history[0]['content']}\" to the AI")
+        # Log the newest message being sent to the AI (last in the oldest-first list)
+        logger.info(f"Sent \"{message_history[-1]['content'][:100]}...\" (newest) to the AI from history of {len(message_history)}")
 
-        message_response = await tools.remove_latex(
-            await tools.clear_text(await chat.get_response(message_history[::-1]))
-        )
+        # Get AI response. `chat.get_response` expects newest-first order.
+        message_response_raw = await chat.get_response(message_history[::-1]) # Reverse back to newest-first
+        
+        # Process the AI response: clean HTML-like comments, profanity, and LaTeX
+        message_response_cleaned = await tools.clear_text(message_response_raw)
+        message_response_final = await tools.remove_latex(message_response_cleaned) # remove_latex also styles it
+        
+        # Split the response into Discord-friendly chunks
+        message_response_split = await tools.smart_text_splitter(message_response_final)
 
-        message_response_split = await tools.smart_text_splitter(message_response)
+        if not message_response_split or not message_response_split[0].strip():
+            logger.info("AI response was empty after processing, not sending.")
+            return
 
+        # Send response to Discord, replying to the original message
         reply_message = await message.reply(
-            message_response_split[0].strip(), mention_author=True
+            message_response_split[0].strip(), mention_author=True # First chunk as a direct reply
         )
 
-        last_message = reply_message
+        # Send subsequent chunks as separate messages, referencing the previous bot message
+        last_message_sent = reply_message
         for chunk in message_response_split[1:]:
-            last_message = await message.channel.send(
-                chunk.strip(), reference=last_message
-            )
+            if chunk.strip(): # Ensure chunk is not empty before sending
+                last_message_sent = await message.channel.send(
+                    chunk.strip(), reference=last_message_sent # Reference the bot's previous message part
+                )
 
     @discord_client.slash_command(name="ask")
     @discord.option(
-        "personalty",
-        description="Choose personalty",
+        "personalty", # Typo: should be "personality"
+        description="Choose personality", # Corrected typo
         choices=[i["user_name"] for i in tools.non_async_get_personalties()],
     )
-    @discord.option("question", description="Whats your question")
+    @discord.option("question", description="What's your question") # Corrected typo
     async def ask(interaction: discord.Interaction, personalty: str, question: str):
-        logger.info(f'Answering "{question}"')
-        await interaction.response.defer(ephemeral=True)
+        """
+        Slash command to ask the bot a question with a specific personality.
 
-        for _ in range(3):
-            channel = interaction.channel
-            if channel is not None:
+        The user provides a personality name (from a predefined list) and a question.
+        The bot defers the interaction, fetches the chosen personality, gets a response
+        from the AI via `chat.get_response`, processes the response (clearing text,
+        removing LaTeX), and then sends the answer back. The initial response is
+        ephemeral, and subsequent parts (if any, due to message splitting) are
+        sent to the channel.
+
+        Args:
+            interaction (discord.Interaction): The interaction object from Discord.
+            personalty (str): The name of the personality to use for the answer.
+            question (str): The question to ask the AI.
+        """
+        logger.info(f'Answering "{question}" with personality "{personalty}"')
+        await interaction.response.defer(ephemeral=True) # Defer with an ephemeral placeholder
+
+        # Attempt to get channel, with retries, as it might not be immediately available in some contexts
+        channel = interaction.channel
+        if channel is None:
+            for _ in range(3): # Retry a few times
+                await asyncio.sleep(1)
+                channel = interaction.channel
+                if channel is not None:
+                    break
+        
+        if channel is None: # If channel is still None after retries
+            logger.error("Could not determine channel for /ask command after retries.")
+            await interaction.followup.send("Sorry, I couldn't process your request in this channel right now.", ephemeral=True)
+            return
+
+        # Find the selected personality object from the loaded personalities
+        selected_personality_obj = None
+        all_personalities = await tools.get_personalties()
+        for p_obj in all_personalities:
+            if p_obj.get("user_name") == personalty:
+                selected_personality_obj = p_obj
                 break
-            await asyncio.sleep(3)
+        
+        if selected_personality_obj is None: # Personality not found
+            logger.error(f"Personality '{personalty}' not found for /ask command.")
+            await interaction.followup.send(f"Sorry, I couldn't find the personality '{personalty}'.", ephemeral=True)
+            return
 
-        message_response = await tools.clear_text(
-            await tools.remove_latex(
-                await chat.get_think_response(
-                    [{"role": "user", "content": question}],
-                    CoT=os.environ["SIMPLE_CHAT_USE_HOMEMADE_COT"].lower()
-                    in ("true", "1"),
-                    personality=list(
-                        filter(
-                            lambda x: x["user_name"] == personalty,
-                            await tools.get_personalties(),
-                        )
-                    )[0],
-                )
-            )
+        # Get response from AI using the question and selected personality
+        raw_response = await chat.get_response(
+            [{"role": "user", "content": question}], # History is just the user's question
+            personality=selected_personality_obj,
         )
+        
+        # Clean and process the raw AI response
+        cleaned_response = await tools.clear_text(raw_response)
+        final_response = await tools.remove_latex(cleaned_response) # Also styles LaTeX
 
-        logger.info(f'Answer is "{message_response}"')
-        message_response_split = await tools.smart_text_splitter(message_response)
-        await interaction.respond(message_response_split[0])
-        if channel is not None:
-            for split in message_response_split[1:]:
-                await channel.send(split)
+        logger.info(f'Answer is "{final_response[:100]}..."') # Log a snippet of the answer
+        
+        if not final_response or not final_response.strip(): # Handle empty response
+            await interaction.followup.send("I received an empty response, sorry!", ephemeral=True)
+            return
+
+        # Split the final response into Discord-friendly chunks
+        message_response_split = await tools.smart_text_splitter(final_response)
+        
+        # Send the first part of the response as a followup to the (ephemeral) interaction
+        first_chunk_to_send = message_response_split[0].strip()
+        if first_chunk_to_send:
+            await interaction.followup.send(first_chunk_to_send, ephemeral=True)
+        else:
+            # This case (empty first chunk but other chunks exist) might indicate an issue or be by design.
+            await interaction.followup.send("The response seems to start with an empty part, but I'll send the rest if any.", ephemeral=True)
+
+        # Send any subsequent parts of the response publicly to the channel
+        if len(message_response_split) > 1:
+            logger.info(f"Sending {len(message_response_split) -1} additional chunks for /ask to channel {channel.id}")
+            # These subsequent messages are sent to the channel and are not ephemeral.
+            # They also don't directly reference the interaction's ephemeral response.
+            for split_chunk in message_response_split[1:]:
+                if split_chunk.strip():
+                    await channel.send(split_chunk.strip())
 
     @discord_client.slash_command(name="summary")
     async def summary(interaction: discord.Interaction):
-        logger.info("Creating summary")
-        await interaction.response.defer(ephemeral=True)
+        """
+        Slash command to generate a summary of the recent chat history in the current channel.
 
-        for _ in range(3):
-            channel = interaction.channel
-            if channel is not None:
-                break
-            await asyncio.sleep(3)
+        The bot defers the interaction (ephemerally), fetches message history,
+        formats it, gets a summary from the AI via `chat.get_summary`, processes
+        the summary (clearing text, removing LaTeX), and sends the summary back
+        as an ephemeral message using `interaction.followup.send`.
 
+        Args:
+            interaction (discord.Interaction): The interaction object from Discord.
+        """
+        logger.info(f"Creating summary for channel {interaction.channel_id}")
+        await interaction.response.defer(ephemeral=True) # Defer with an ephemeral placeholder
+
+        # Attempt to get channel, with retries
+        channel = interaction.channel
         if channel is None:
-            await interaction.respond("ERROR")
+            for _ in range(3):
+                await asyncio.sleep(1)
+                channel = interaction.channel
+                if channel is not None:
+                    break
+        
+        if channel is None: # If channel still not found
+            logger.error(f"Could not determine channel for /summary command after retries for interaction {interaction.id}.")
+            await interaction.followup.send("ERROR: Could not access channel information.", ephemeral=True)
             return
 
-        past_messages = await channel.history(
-            # after=datetime.datetime.now() - datetime.timedelta(hours=12)
-        ).flatten()
+        # Fetch message history from the channel (Discord API returns newest first by default)
+        past_messages_raw = await channel.history(limit=100).flatten() # Fetch up to 100 recent messages
 
-        if len(past_messages) == 0:
-            logger.error("No messages found")
-            await interaction.respond("No messages found")
+        if not past_messages_raw: # No messages found
+            logger.info(f"No messages found in channel {channel.id} for summary.")
+            await interaction.followup.send("No messages found to summarize.", ephemeral=True)
+            return
 
-        message_history = await chat.messages_from_history(
-            past_messages,
-            past_messages[0].created_at.timestamp(),
+        # `chat.messages_from_history` expects messages oldest first.
+        # The `message_create_at` argument for `messages_from_history` is currently unused in that function.
+        # Here, we pass the interaction's creation time as a reference point.
+        message_history_for_ai = await chat.messages_from_history(
+            past_messages_raw[::-1], # Reverse to oldest first
+            interaction.created_at.timestamp(),
             discord_client,
-            0,
+            interaction.user.id, # ID of the user who invoked the command
             image_db,
         )
 
-        if len(message_history) == 0:
-            logger.error("No messages found")
-            await interaction.respond("No messages found")
+        if not message_history_for_ai: # If processing results in no usable history
+            logger.info(f"Message history for AI was empty after processing for channel {channel.id}.")
+            await interaction.followup.send("No processable messages found to summarize.", ephemeral=True)
+            return
+        
+        # `chat.get_summary` expects messages oldest first, which `message_history_for_ai` is.
+        raw_summary = await chat.get_summary(message_history_for_ai)
+        
+        # Clean and process the raw AI summary
+        cleaned_summary = await tools.clear_text(raw_summary)
+        final_summary = await tools.remove_latex(cleaned_summary) # Also styles LaTeX
 
-        message_response = await tools.clear_text(
-            await tools.remove_latex(await chat.get_summary(message_history))
-        )
+        if not final_summary or not final_summary.strip(): # Handle empty summary
+            logger.info(f"Summary was empty after processing for channel {channel.id}.")
+            await interaction.followup.send("I couldn't generate a summary from the recent messages.", ephemeral=True)
+            return
 
-        if len(message_response) == 0:
-            logger.error("I have no idea")
-            await interaction.respond("ERROR")
-
-        logger.info(f'Summary is "{message_response}"')
-        await interaction.respond(message_response[:2000], ephemeral=True)
+        logger.info(f'Summary for channel {channel.id} is "{final_summary[:100]}..."')
+        # Send the summary as an ephemeral followup, truncated if necessary
+        await interaction.followup.send(final_summary[:2000], ephemeral=True)
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])
