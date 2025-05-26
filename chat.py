@@ -271,12 +271,21 @@ async def messages_from_history(
             "role": role,
             "content": content_with_metadata,
             "name": past_message.author.display_name, # Store original author display name
+            "time": dt_object
         }
-
         # Add to appropriate list based on character count
-        if (current_char_count + message_len) <= MAX_HISTORY_CHARACTERS:
-            message_history.append(message_data)
-            current_char_count += message_len
+
+        current_char_count += message_len
+        if current_char_count <= MAX_HISTORY_CHARACTERS:
+            if len(message_history) > 0 and message_history[-1]["name"] == message_data[-1]["name"] and (message_history[-1]["time"] - message_data["time"]).seconds < 4:
+                message_history[-1]["content"] +="\n\n" + message_data["content"]
+            else:
+                message_history.append(message_data)
+                # there is a case where the last message is very long and therefore does not get summarized
+                if len(message_history) > 0 and len(message_history[-1]["content"]) > 100:
+                    old_char_count = len(message_history[-1]["content"])
+                    message_history[-1]["content"] = await text_summary(message_history[-1]["content"])
+                    current_char_count -= old_char_count - len(message_history[-1]["content"])
         else:
             message_history_to_compress.append(message_data) # Exceeds limit, mark for summarization
 
@@ -455,6 +464,28 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     # if the above filtering is sufficient, but kept for consistency with other text processing.
     return await tools.clear_text(description_content)
 
+
+async def text_summary(text: str) -> str:
+    client = _get_openai_client()
+    summarize_prompt_text = f"Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. Only respond with the new version.\n\nText:\n{text}\n\nNew text:\n"
+    summarize_prompt = {"role": "user", "content": summarize_prompt_text}
+    system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
+    # Call AI to summarize the message group
+
+    try:
+        response = await client.chat.completions.create(
+            messages=system_messages + [summarize_prompt], # Combine system, group, and summary instruction
+            model=ROUTER_MODEL, # Use the designated router/summarizer model
+            max_tokens=50, # Limit the length of the generated summary
+        )
+        content = response.choices[0].message.content
+
+    except Exception as e:
+        logger.error(f"OpenAI API call for summary creation failed: {e}")
+        return ""
+
+    return await tools.clear_text(content) if content else "" # Clean the summary text
+    
 
 # @cached(ttl=3600) # Consider if caching is appropriate here, as message content changes.
 async def get_summary(messages: list[dict[str, str]]) -> str:
