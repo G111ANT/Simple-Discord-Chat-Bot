@@ -282,7 +282,7 @@ async def messages_from_history(
             else:
                 message_history.append(message_data)
                 # There is a case where the last message is very long and therefore does not get summarized
-                if len(message_history) > 0 and len(message_history[-1]["content"]) > 100:
+                if len(message_history) > 0 and len(message_history[-1]["content"].split()) > 100:
                     old_char_count = len(message_history[-1]["content"])
                     message_history[-1]["content"] = await text_summary(message_history[-1]["content"])
                     current_char_count -= old_char_count - len(message_history[-1]["content"])
@@ -515,7 +515,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     message_group: list[dict[str, str]] = [] # Current group of messages being processed for a single summary
     current_char_count = 0 # Character count for the current message_group
     # Standard prompt for generating a summary from a group of messages
-    summarize_prompt_text = "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Write the summary here:\n"
+    summarize_prompt_text = "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Only respond with the summary. Write the summary here:\n"
     summarize_prompt = {"role": "user", "content": summarize_prompt_text}
 
     async def _create_single_summary(msg_group: list[dict[str, str]]) -> str | None:
