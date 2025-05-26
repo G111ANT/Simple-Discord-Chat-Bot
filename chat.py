@@ -281,7 +281,7 @@ async def messages_from_history(
                 message_history[-1]["content"] +="\n\n" + message_data["content"]
             else:
                 message_history.append(message_data)
-                # there is a case where the last message is very long and therefore does not get summarized
+                # There is a case where the last message is very long and therefore does not get summarized
                 if len(message_history) > 0 and len(message_history[-1]["content"]) > 100:
                     old_char_count = len(message_history[-1]["content"])
                     message_history[-1]["content"] = await text_summary(message_history[-1]["content"])
