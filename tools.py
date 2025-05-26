@@ -473,16 +473,15 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
     if personalities is None or not personalities: # First time loading or current list is empty
         num_to_sample = min(k, len(available_personalities))
         if num_to_sample == 0 and len(available_personalities) > 0:
-             personalities = (random.choice(available_personalities),)
+            personalities = (random.choice(available_personalities),)
         elif num_to_sample > 0 :
-             personalities = tuple(random.sample(available_personalities, num_to_sample))
+            personalities = tuple(random.sample(available_personalities, num_to_sample))
         else:
-             personalities = ()
+            personalities = ()
     else:
         current_list = list(personalities)
-        num_existing_to_keep = min(k - 1, len(current_list))
         
-        new_selection = current_list[:num_existing_to_keep]
+        new_selection = current_list[1:]
         
         if k > 0 :
             choices_for_new = [p for p in available_personalities if p not in new_selection]
