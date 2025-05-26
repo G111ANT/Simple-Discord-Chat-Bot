@@ -277,7 +277,7 @@ async def messages_from_history(
 
         current_char_count += message_len
         if current_char_count <= MAX_HISTORY_CHARACTERS:
-            if len(message_history) > 0 and message_history[-1]["name"] == message_data[-1]["name"] and (message_history[-1]["time"] - message_data["time"]).seconds < 4:
+            if len(message_history) > 0 and message_history[-1]["name"] == message_data["name"] and (message_history[-1]["time"] - message_data["time"]).seconds < 4:
                 message_history[-1]["content"] +="\n\n" + message_data["content"]
             else:
                 message_history.append(message_data)
