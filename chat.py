@@ -217,6 +217,9 @@ async def messages_from_history(
         for pattern, replacement in replacements:
             content = content.replace(pattern, replacement)
 
+        if len(content.split()) > 100:
+            content = await text_summary(content)
+
         # Add image descriptions if enabled, attachments/embeds exist, and space allows
         if (
             not FILTER_IMAGES # Image filtering is disabled
@@ -277,19 +280,11 @@ async def messages_from_history(
 
         current_char_count += message_len
         if current_char_count <= MAX_HISTORY_CHARACTERS:
-            if len(message_history) > 0 and message_history[-1]["name"] == message_data["name"] and (message_history[-1]["time"] - message_data["time"]).seconds < 4:
-                message_history[-1]["content"] +="\n\n" + message_data["content"]
-            else:
-                message_history.append(message_data)
-                # There is a case where the last message is very long and therefore does not get summarized
-                if len(message_history) > 0 and len(message_history[-1]["content"].split()) > 100:
-                    old_char_count = len(message_history[-1]["content"])
-                    message_history[-1]["content"] = await text_summary(message_history[-1]["content"])
-                    current_char_count -= old_char_count - len(message_history[-1]["content"])
+            message_history.append(message_data)
         else:
             del message_data["time"]
             message_history_to_compress.append(message_data) # Exceeds limit, mark for summarization
-            
+
     for i in range(len(message_history)):
         del message_history[i]["time"]
 
