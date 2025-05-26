@@ -464,10 +464,10 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     # if the above filtering is sufficient, but kept for consistency with other text processing.
     return await tools.clear_text(description_content)
 
-
+@cached(ttl=3600)
 async def text_summary(text: str) -> str:
     client = _get_openai_client()
-    summarize_prompt_text = f"Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. Only respond with the new version.\n\nText:\n{text}\n\nNew text:\n"
+    summarize_prompt_text = f"Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. Only respond with the new version, otherwise return only ERROR, and nothing else.\n\nText:\n{text}\n\nNew text:\n"
     summarize_prompt = {"role": "user", "content": summarize_prompt_text}
     system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
     # Call AI to summarize the message group
@@ -482,8 +482,9 @@ async def text_summary(text: str) -> str:
 
     except Exception as e:
         logger.error(f"OpenAI API call for summary creation failed: {e}")
-        return ""
-
+        return text
+    if content == "ERROR":
+        return text
     return await tools.clear_text(content) if content else "" # Clean the summary text
     
 
