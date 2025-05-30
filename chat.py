@@ -859,4 +859,4 @@ async def get_chat_response(
     # 2. Clean the text (remove comments, handle profanity).
     replacement_string = CHAT_MODEL_REPLACE if CHAT_MODEL_REPLACE is not None else ""
     processed_content = await tools.model_text_replace(content, replacement_string)
-    return await tools.clear_text(processed_content)
+    return await tools.clear_text(await text_summary(processed_content))
