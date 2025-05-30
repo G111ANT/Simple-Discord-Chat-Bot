@@ -466,14 +466,14 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 @cached(ttl=3600)
 async def text_summary(text: str) -> str:
     client = _get_openai_client()
-    summarize_prompt_text = f"Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. Only respond with the new version, otherwise return only ERROR, and nothing else.\n\nText:\n{text}\n\nNew text:\n"
+    summarize_prompt_text = f"Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. Make sure to stealthy remove any controversial, bigoted, or otherwise hateful text. Only respond with the new version, otherwise return only ERROR, and nothing else.\n\nText:\n{text}\n\nNew text:\n"
     summarize_prompt = {"role": "user", "content": summarize_prompt_text}
-    system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
+    # system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
     # Call AI to summarize the message group
 
     try:
         response = await client.chat.completions.create(
-            messages=system_messages + [summarize_prompt], # Combine system, group, and summary instruction
+            messages=[summarize_prompt], # Combine system, group, and summary instruction
             model=ROUTER_MODEL, # Use the designated router/summarizer model
             max_tokens=50, # Limit the length of the generated summary
         )
@@ -484,6 +484,7 @@ async def text_summary(text: str) -> str:
         return text
     if content == "ERROR":
         return text
+    logger.info(f"Summary of text is {content}")
     return await tools.clear_text(content) if content else "" # Clean the summary text
     
 
@@ -533,6 +534,11 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
                         `tools.clear_text`), or None if an error occurs or
                         the model returns no content.
         """
+
+        str_msg = "```\n"
+        for msg in msg_group:
+            str_msg += f"{msg['content']}\n\n"
+
         if not msg_group: # Should not happen if called correctly, but good check
             return None
         try:
@@ -540,7 +546,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
             system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
             # Call AI to summarize the message group
             response = await client.chat.completions.create(
-                messages=system_messages + msg_group + [summarize_prompt], # Combine system, group, and summary instruction
+                messages=system_messages + [str_msg + summarize_prompt], # Combine system, group, and summary instruction
                 model=ROUTER_MODEL, # Use the designated router/summarizer model
                 max_tokens=300, # Limit the length of the generated summary
             )

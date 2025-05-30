@@ -19,7 +19,7 @@ if __name__ == "__main__":
     file_handler = logging.FileHandler("./log/simple_chat.log")
 
     stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(tools.NotTooLongStringFormatter())
+    # stream_handler.setFormatter(tools.NotTooLongStringFormatter())
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -86,6 +86,7 @@ if __name__ == "__main__":
         Logs a message indicating the bot has successfully logged in.
         """
         logger.info(f"Logged in as {discord_client.user}")
+        logger.debug(f"Discord client ready. User ID: {discord_client.user.id}")
 
     @discord_client.event
     async def on_message(message: discord.Message):
@@ -110,30 +111,40 @@ if __name__ == "__main__":
         Args:
             message (discord.Message): The message object received from Discord.
         """
+        logger.debug(f"[on_message START] User: {message.author.name} ({message.author.id}), Channel: {message.channel.id}, Guild: {message.guild.id if message.guild else 'DM'}. Content: \"{message.content[:60]}...\"")
         global profile_picture
         current_personality = (await tools.get_personality())[0] # Get the current primary personality
+        logger.debug(f"Current personality: {current_personality['user_name']}")
         
         # Update bot's nickname and avatar if necessary, only in guilds
         if message.guild is not None and message.guild.me.nick != current_personality["user_name"]:
+            logger.info(f"Attempting to update nickname to '{current_personality['user_name']}' in guild {message.guild.id}")
             try:
                 await message.guild.me.edit(nick=current_personality["user_name"])
+                logger.info(f"Successfully updated nickname in guild {message.guild.id}")
                 image_path = current_personality["image"]
                 # Update profile picture only if it has changed
                 if profile_picture != image_path:
+                    logger.info(f"Attempting to change avatar to '{image_path}'.")
                     async with aiofiles.open(image_path, "rb") as file:
                         await discord_client.user.edit(avatar=await file.read())
                         profile_picture = image_path # Cache the path of the current profile picture
+                        logger.info(f"Successfully updated profile picture to '{image_path}'.")
             except Exception as e:
+                logger.error(f"Error updating profile/nick in guild {message.guild.id}: {e}")
                 logger.info(f"Error updating profile/nick: {e}")
     
         respond = False # Flag to determine if the bot should respond
         now = datetime.datetime.now()
+        logger.debug(f"Current time for DB checks: {now}")
     
         # Ensure chat_db_entry exists for the channel, or create it
         channel_query = tinydb.Query().channel == message.channel.id
+        logger.debug(f"DB: Searching for chat entry for channel {message.channel.id}")
         chat_db_results = await chats_db.search(channel_query)
     
         if not chat_db_results:
+            logger.info(f"DB: No chat entry for channel {message.channel.id}. Creating new one.")
             # Initialize channel entry if it doesn't exist
             twelve_hours_ago = str(now - datetime.timedelta(hours=12)) # Default last interaction time
             await chats_db.insert(
@@ -145,22 +156,30 @@ if __name__ == "__main__":
             )
             chat_db_entry = (await chats_db.search(channel_query))[0]
         else:
+            logger.debug(f"DB: Found existing entry: {chat_db_results[0]}") # Log before assigning to chat_db_entry
             chat_db_entry = chat_db_results[0]
     
         # Parse timestamps from the database
         last_scan_dt = datetime.datetime.strptime(chat_db_entry["last_scan"], "%Y-%m-%d %H:%M:%S.%f")
         last_chat_dt = datetime.datetime.strptime(chat_db_entry["last_chat"], "%Y-%m-%d %H:%M:%S.%f")
+        logger.debug(f"DB Timestamps: last_scan_dt: {last_scan_dt}, last_chat_dt: {last_chat_dt} for channel {message.channel.id}")
     
         # Determine if the bot should respond, ignoring its own messages and other bots
         if message.author.id != discord_client.application_id and not message.author.bot:
+            logger.debug(f"Message from user '{message.author.name}' (ID: {message.author.id}), not the bot itself or another bot. Proceeding with response logic.")
             # Condition 1: Bot is directly mentioned
             if discord_client.application_id in map(lambda x: x.id, message.mentions):
+                logger.info(f"RESPONSE_CONDITION: Bot mentioned in channel {message.channel.id}. respond = True.")
                 respond = True
             else:
+                logger.debug("RESPONSE_CONDITION: Bot not directly mentioned. Checking other conditions.")
                 # Condition 2: Last scan for potential response triggers was more than an hour ago
                 if last_scan_dt <= now - datetime.timedelta(hours=1):
+                    logger.info(f"RESPONSE_CONDITION: Scan needed for channel {message.channel.id} (last scan: {last_scan_dt}).")
                     await chats_db.update({"last_scan": str(now)}, channel_query) # Update last scan time
+                    logger.debug(f"DB: Updated last_scan to {now} for channel {message.channel.id}.")
                     # Fetch a limited history to check if a response is appropriate
+                    logger.debug(f"Fetching limited history (10 messages) for scan in channel {message.channel.id}.")
                     limited_message_history = await chat.messages_from_history(
                         await message.channel.history(limit=10).flatten(), # Get last 10 messages
                         message.created_at.timestamp(),
@@ -168,13 +187,18 @@ if __name__ == "__main__":
                         message.author.id,
                         image_db,
                     )
+                    logger.debug(f"AI_CALL: chat.should_respond for scan (history len: {len(limited_message_history)}).")
                     respond = await chat.should_respond(limited_message_history) # Ask AI if it should respond
+                    logger.info(f"AI_RESULT: chat.should_respond (scan) returned: {respond} for channel {message.channel.id}.")
                 
                 # Condition 3: Bot's last chat was between 5 and 10 minutes ago (potential re-engagement)
                 time_since_last_chat = now - last_chat_dt
+                logger.debug(f"RESPONSE_CONDITION: Time since last chat in channel {message.channel.id}: {time_since_last_chat}.")
                 if not respond and \
                    (datetime.timedelta(minutes=5) <= time_since_last_chat <= datetime.timedelta(minutes=10)):
+                    logger.info(f"RESPONSE_CONDITION: Re-engagement check for channel {message.channel.id} (time_since_last_chat: {time_since_last_chat}).")
                     # Fetch limited history for re-engagement check
+                    logger.debug(f"Fetching limited history (10 messages) for re-engagement in channel {message.channel.id}.")
                     limited_message_history = await chat.messages_from_history(
                         await message.channel.history(limit=10).flatten(),
                         message.created_at.timestamp(),

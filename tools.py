@@ -491,9 +491,9 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
             if choices_for_new:
                  new_random_personality = random.choice(choices_for_new)
                  if len(new_selection) < k:
-                     new_selection.append(new_random_personality)
+                    new_selection.append(new_random_personality)
                  elif not new_selection and k==1:
-                     new_selection = [new_random_personality]
+                    new_selection = [new_random_personality]
 
         personalities = tuple(new_selection)
 
