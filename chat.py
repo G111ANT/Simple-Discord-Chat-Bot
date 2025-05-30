@@ -473,7 +473,7 @@ async def text_summary(text: str) -> str:
 
     try:
         response = await client.chat.completions.create(
-            messages=[summarize_prompt], # Combine system, group, and summary instruction
+            messages=[summarize_prompt,], # Combine system, group, and summary instruction
             model=ROUTER_MODEL, # Use the designated router/summarizer model
             max_tokens=50, # Limit the length of the generated summary
         )
