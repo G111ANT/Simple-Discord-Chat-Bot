@@ -517,7 +517,6 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
     current_char_count = 0 # Character count for the current message_group
     # Standard prompt for generating a summary from a group of messages
     summarize_prompt_text = "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Only respond with the summary. Write the summary here:\n"
-    summarize_prompt = {"role": "user", "content": summarize_prompt_text}
 
     async def _create_single_summary(msg_group: list[dict[str, str]]) -> str | None:
         """
@@ -538,7 +537,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         str_msg = "```\n"
         for msg in msg_group:
             str_msg += f"{msg['content']}\n\n"
-
+        summarize_prompt = {"role": "user", "content": str_msg + summarize_prompt_text}
         if not msg_group: # Should not happen if called correctly, but good check
             return None
         try:
@@ -546,7 +545,7 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
             system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
             # Call AI to summarize the message group
             response = await client.chat.completions.create(
-                messages=system_messages + [str_msg + summarize_prompt], # Combine system, group, and summary instruction
+                messages=system_messages + [summarize_prompt], # Combine system, group, and summary instruction
                 model=ROUTER_MODEL, # Use the designated router/summarizer model
                 max_tokens=300, # Limit the length of the generated summary
             )
