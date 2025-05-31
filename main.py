@@ -50,12 +50,12 @@ if __name__ == "__main__":
     # tinydb.Modifier.Encryption.AES_GCM(chats_db)
 
     logger.info("Loading image db")
-    image_db = tinydb.TinyDB("./db/image.json.br", access_mode="rb+")
+    image_db = tinydb.TinyDB("./db/image.json", access_mode="rb+")
 
     # uses faster json decoder/encoder
     tinydb.Modifier.Conversion.ExtendedJSON(image_db)
     # compress the large amount of text data
-    tinydb.Modifier.Compression.brotli(image_db)
+    # tinydb.Modifier.Compression.brotli(image_db)
     # optional encryption
     # tinydb.Modifier.Encryption.AES_GCM(chats_db)
 
