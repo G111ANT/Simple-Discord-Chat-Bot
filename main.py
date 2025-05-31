@@ -280,12 +280,12 @@ if __name__ == "__main__":
 
     @discord_client.slash_command(name="ask")
     @discord.option(
-        "personalty", # Typo: should be "personality"
-        description="Choose personality", # Corrected typo
+        "personality",
+        description="Choose personality",
         choices=[i["user_name"] for i in tools.non_async_get_personalties()],
     )
-    @discord.option("question", description="What's your question") # Corrected typo
-    async def ask(interaction: discord.Interaction, personalty: str, question: str):
+    @discord.option("question", description="What's your question")
+    async def ask(interaction: discord.Interaction, personality: str, question: str):
         """
         Slash command to ask the bot a question with a specific personality.
 
@@ -298,10 +298,10 @@ if __name__ == "__main__":
 
         Args:
             interaction (discord.Interaction): The interaction object from Discord.
-            personalty (str): The name of the personality to use for the answer.
+            personality (str): The name of the personality to use for the answer.
             question (str): The question to ask the AI.
         """
-        logger.info(f'Answering "{question}" with personality "{personalty}"')
+        logger.info(f'Answering "{question}" with personality "{personality}"')
         await interaction.response.defer(ephemeral=True) # Defer with an ephemeral placeholder
 
         # Attempt to get channel, with retries, as it might not be immediately available in some contexts
@@ -322,13 +322,13 @@ if __name__ == "__main__":
         selected_personality_obj = None
         all_personalities = await tools.get_personalties()
         for p_obj in all_personalities:
-            if p_obj.get("user_name") == personalty:
+            if p_obj.get("user_name") == personality:
                 selected_personality_obj = p_obj
                 break
         
         if selected_personality_obj is None: # Personality not found
-            logger.error(f"Personality '{personalty}' not found for /ask command.")
-            await interaction.followup.send(f"Sorry, I couldn't find the personality '{personalty}'.", ephemeral=True)
+            logger.error(f"Personality '{personality}' not found for /ask command.")
+            await interaction.followup.send(f"Sorry, I couldn't find the personality '{personality}'.", ephemeral=True)
             return
 
         # Get response from AI using the question and selected personality
