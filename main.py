@@ -224,9 +224,6 @@ if __name__ == "__main__":
 
         # Fetch and process message history for AI context
         past_messages_raw = [m async for m in message.channel.history()]
-        # await message.channel.history(
-        #     # after=datetime.datetime.now() - datetime.timedelta(hours=12) # Consider limiting history fetch for performance/cost
-        # ).flatten() # Get all available recent messages
 
         # `chat.messages_from_history` expects messages in oldest-to-newest order.
         # `message.channel.history()` returns newest-to-oldest by default.

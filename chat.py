@@ -142,7 +142,7 @@ async def messages_from_history(
     discord_client: discord.Client,
     author_id: int, # ID of the user who triggered the current interaction
     image_db: tinydb.TinyDB,
-) -> list[dict[str, str]]:
+) -> str:
     """
     Transforms a list of Discord messages into a structured list of dictionaries
     suitable for an AI model, including metadata, image descriptions, and summarization
@@ -226,6 +226,7 @@ async def messages_from_history(
         if len(content.split()) > 100:
             content = await text_summary(content)
 
+        image_markdown = []
         # Add image descriptions if enabled, attachments/embeds exist, and space allows
         if (
             not FILTER_IMAGES # Image filtering is disabled
@@ -234,15 +235,15 @@ async def messages_from_history(
         ):
             if content: # Add a newline before image descriptions if there's existing text content
                 content += "\n"
-
-            image_markdown = []
+            
             # Process attachments
             for attachment in past_message.attachments:
                 try:
                     # Describe image with a timeout
                     description = await asyncio.wait_for(image_describe(attachment.url, image_db), timeout=10)
                     if description: # Add description if one was generated
-                        image_markdown.append(f"<!---\nimage description:\n{description}\n-->")
+                        image_markdown.append(description)
+                        current_char_count += len(description)
                 except asyncio.TimeoutError:
                     logger.error(f"Timeout describing image: {attachment.url}")
                 except Exception as e:
@@ -254,14 +255,12 @@ async def messages_from_history(
                     try:
                         description = await asyncio.wait_for(image_describe(embed.thumbnail.proxy_url, image_db), timeout=10)
                         if description:
-                            image_markdown.append(f"<!---\nimage description:\n{description}\n-->")
+                            image_markdown.append(description)
+                            current_char_count += len(description)
                     except asyncio.TimeoutError:
                         logger.error(f"Timeout describing image embed: {embed.thumbnail.proxy_url}")
                     except Exception as e:
                         logger.error(f"Error describing image embed {embed.thumbnail.proxy_url}: {e}")
-            
-            if image_markdown: # If any descriptions were generated, append them
-                content += "\n".join(image_markdown)
 
         # Format the message creation timestamp
         if isinstance(past_message.created_at, datetime.datetime):
@@ -269,18 +268,18 @@ async def messages_from_history(
         else:
             dt_object = datetime.datetime.fromtimestamp(past_message.created_at.timestamp())
         
-        date_str = dt_object.strftime(DATETIME_FORMAT_STR)
         # Prepend metadata (sender, timestamp) as an HTML-like comment
-        content_with_metadata = f'<!--- Message sent on {date_str} by {role if role == "assistant" else past_message.author.display_name} (ID: {past_message.author.id}) -->\n{content.strip()}'
 
         # Calculate approximate length of the formatted message
-        message_len = len(content_with_metadata) + len(role)
+        message_len = len(content.strip()) + len(role)
         
         message_data = {
             "role": role,
-            "content": content_with_metadata,
-            "name": past_message.author.display_name, # Store original author display name
-            "time": dt_object
+            "content": content.strip(),
+            "author_name": past_message.author.display_name,
+            "author_id": past_message.author.id,
+            "time": dt_object,
+            "images": image_markdown
         }
         # Add to appropriate list based on character count
 
@@ -288,37 +287,30 @@ async def messages_from_history(
         if current_char_count <= MAX_HISTORY_CHARACTERS:
             message_history.append(message_data)
         else:
-            del message_data["time"]
             message_history_to_compress.append(message_data) # Exceeds limit, mark for summarization
-
-    for i in range(len(message_history)):
-        del message_history[i]["time"]
 
     # If there are messages to compress, summarize them
     if message_history_to_compress:
         summary_of_older_messages = await get_summary(message_history_to_compress)
         if summary_of_older_messages:
-            # Insert the summary as a system message at the beginning of the history (oldest part)
-            message_history.insert(0,
-                {
-                    "role": "system",
-                    "content": f"Summary of earlier messages that were removed to save space (oldest first):\n{summary_of_older_messages}",
-                    "name": "SummaryProvider" # Generic name for the summary provider
-                }
-            )
-            # Note: The length of this summary message itself is not currently re-checked against MAX_HISTORY_CHARACTERS.
+            pass
 
-    # Filter out messages that are empty or contain only the metadata comment after all processing
-    final_filtered_history = []
-    for msg in message_history:
-        msg_content_str = str(msg.get("content", ""))
-        # Regex to check if content is ONLY the metadata comment (and optional whitespace)
-        metadata_only_pattern = r"<!--- Message sent on .* by .* \(ID: .*\) -->\s*"
-        if msg_content_str.strip() and not re.fullmatch(metadata_only_pattern, msg_content_str):
-            final_filtered_history.append(msg)
-    
-    # Return messages in reverse chronological order (newest first) as expected by some models/logic
-    return final_filtered_history[::-1]
+    final_data = ""
+
+    for message in message_history:
+        final_data += "<MESSAGE>\n"
+
+        final_data += f"<TYPE>{message['role']}</TYPE>"
+        final_data += f"<USER_ID>{message['author_id']}</USER_ID>\n"
+        final_data += f"<USER_NAME>{message['author_name']}</USER_NAME>\n"
+        final_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
+        final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
+        for image in message['images']:
+            final_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
+
+        final_data += "</MESSAGE>\n\n"
+
+    return final_data.strip()
 
 
 @cached(ttl=3600)
@@ -546,7 +538,7 @@ async def text_sanitize(text: str) -> str:
 
 
 # @cached(ttl=3600) # Consider if caching is appropriate here, as message content changes.
-async def get_summary(messages: list[dict[str, str]]) -> str:
+async def get_summary(messages: str) -> str:
     """
     Generates a concise summary of a list of message dictionaries.
 
@@ -569,127 +561,21 @@ async def get_summary(messages: list[dict[str, str]]) -> str:
         return ""
 
     client = _get_openai_client()
-    summaries: list[str] = [] # List to hold intermediate summaries
-    message_group: list[dict[str, str]] = [] # Current group of messages being processed for a single summary
-    current_char_count = 0 # Character count for the current message_group
     # Standard prompt for generating a summary from a group of messages
-    summarize_prompt_text = "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Only respond with the summary. Write the summary here:\n"
+    summarize_prompt_text = "Generate a concise, single paragraph summary of the discussions above. Focus on more recent messages. Only respond with the summary."
 
-    async def _create_single_summary(msg_group: list[dict[str, str]]) -> str | None:
-        """
-        Helper function to create a summary from a single group of messages.
-
-        Uses `ROUTER_MODEL` for summarization.
-
-        Args:
-            msg_group (list[dict[str, str]]): A list of message dictionaries
-                to be summarized.
-
-        Returns:
-            str | None: The generated summary string (after being cleaned by
-                        `tools.clear_text`), or None if an error occurs or
-                        the model returns no content.
-        """
-
-        str_msg = "```\n"
-        for msg in msg_group:
-            str_msg += f"{msg['content']}\n\n"
-        summarize_prompt = {"role": "user", "content": str_msg + summarize_prompt_text}
-        if not msg_group: # Should not happen if called correctly, but good check
-            return None
-        try:
-            # Use global system messages as a base for the summarization prompt
-            system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
-            # Call AI to summarize the message group
-            response = await client.chat.completions.create(
-                messages=system_messages + [summarize_prompt], # Combine system, group, and summary instruction
-                model=ROUTER_MODEL, # Use the designated router/summarizer model
-                max_tokens=300, # Limit the length of the generated summary
-            )
-            content = response.choices[0].message.content
-            return await tools.clear_text(content) if content else None # Clean the summary text
-        except Exception as e:
-            logger.error(f"OpenAI API call for summary creation failed: {e}")
-            return None
-
-    # Initial summarization pass: group messages by character count and summarize each group
-    # Assumes `messages` are in chronological order (oldest to newest)
-    for message in messages:
-        msg_content = message.get("content", "")
-        if not isinstance(msg_content, str): # Ensure content is a string
-            logger.warning(f"Message content is not a string: {msg_content}. Skipping.")
-            continue
-
-        msg_content_len = len(msg_content)
-        
-        # If adding the current message exceeds the character limit for a group,
-        # summarize the current group first.
-        if (current_char_count + msg_content_len) > MAX_HISTORY_CHARACTERS and message_group:
-            summary_content = await _create_single_summary(message_group)
-            if summary_content:
-                summaries.append(summary_content) # Add generated summary to the list
-            # Reset for the next group
-            current_char_count = 0
-            message_group = []
-        
-        # Add current message to the group and update character count
-        message_group.append(message)
-        current_char_count += msg_content_len
-
-    # Process any remaining messages in the last group
-    if message_group:
-        summary_content = await _create_single_summary(message_group)
-        if summary_content:
-            summaries.append(summary_content)
-    
-    if not summaries: # If no summaries were generated (e.g., all messages were empty or errors occurred)
-        return ""
-
-    # Iteratively consolidate summaries if multiple were generated, until only one remains.
-    # This creates a summary of summaries if the initial text was too long for one pass.
-    while len(summaries) > 1:
-        new_summaries = [] # Store consolidated summaries for the next iteration
-        # Process existing summaries in pairs
-        for i in range(0, len(summaries), 2):
-            if i + 1 < len(summaries): # If there's a pair of summaries
-                summary1 = summaries[i] # Older part of the conversation
-                summary2 = summaries[i+1] # Newer part of the conversation
-                # Prompt for consolidating two summaries
-                consolidation_prompt_content = (
-                    f"Generate a concise, single paragraph summary of the two summaries below. "
-                    f"Try the best you can, and prioritize summary 2 (the newer one).\n"
-                    f"Summary 1:\n\n{summary1}\n\n"
-                    f"Summary 2: {summary2}\n\nNew Summary:\n\n"
-                )
-                try:
-                    system_messages = [msg for msg in GLOBAL_SYSTEM if isinstance(msg, dict)]
-                    # Call AI to consolidate the two summaries
-                    response = await client.chat.completions.create(
-                        messages=system_messages + [{"role": "user", "content": consolidation_prompt_content}],
-                        model=ROUTER_MODEL, # Use router/summarizer model for consolidation
-                        max_tokens=300, # Limit length of consolidated summary
-                    )
-                    content = response.choices[0].message.content
-                    if content:
-                        new_summaries.append(await tools.clear_text(content))
-                    else: # If consolidation fails or returns empty, keep the first (older) summary of the pair
-                        new_summaries.append(summary1)
-                except Exception as e:
-                    logger.error(f"OpenAI API call for consolidating summaries failed: {e}")
-                    new_summaries.append(summary1) # Fallback to the first summary on error
-            else: # If there's an odd one out (the newest summary), carry it over directly
-                new_summaries.append(summaries[i])
-        summaries = new_summaries # Replace old list of summaries with the new consolidated list
-
-    # The final summary is the single remaining item in the list (if any)
-    final_summary = summaries[0] if summaries else ""
-    if final_summary:
-        logger.info(f"Final Summary: {final_summary[:200]}...") # Log a snippet of the final summary
-    return final_summary
+    response = await client.chat.completions.create(
+        messages={"role": "user", "content": f"{summarize_prompt_text}\n\n{str}"},
+        model=ROUTER_MODEL,
+        max_tokens=300,
+    )
+    content = response.choices[0].message.content
+    return await tools.clear_text(content) if content else ""
 
 
 async def should_respond(
-    messages: list[dict[str, str]],
+    messages: str,
+    last_message_content: str,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
 ) -> bool:
     """
@@ -742,11 +628,8 @@ async def should_respond(
     # Generate a summary of the conversation history.
     # `get_summary` expects messages in oldest-to-newest order.
     # `messages` (from `messages_from_history`) is newest-to-oldest, so reverse it.
-    summary = await get_summary(messages[::-1])
+    summary = await get_summary(messages)
     summary_prompt = f'The summary of the conversations is "{summary}".\n' if summary else ""
-    
-    # Get the content of the last message (which is the first in the newest-to-oldest list)
-    last_message_content = messages[0].get('content', '') if messages else ''
 
     # Get the personality's summary description, defaulting to global system content if not defined
     personality_summary_desc = current_personality.get('summary', GLOBAL_SYSTEM_CONTENT)
@@ -846,7 +729,7 @@ async def get_response(
 
 
 async def get_chat_response(
-    messages: list[dict[str, str]],
+    messages: str,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
 ) -> str:
     """
@@ -892,13 +775,17 @@ async def get_chat_response(
 
     # Combine the personality's system messages with the actual conversation messages.
     # System messages typically go first. `messages` are assumed to be newest-first here.
-    messages_with_systems: list[dict[str, str]] = personality_messages + messages
+    personality_strs = [m.get("content", "") for m in personality_messages if m.get("role", "") == "system"]
+    personality_str = "" if len(personality_strs) == 0 else personality_strs[0]
+    
+    personality_str = f"<PERSONALITY>{personality_str}</PERSONALITY>"
+    messages_with_systems = "You job is to repsond to the messages they way a bot with the personality would. you should only repond with the message and nothing else.\n" + personality_str + "\n" + messages
 
     client = _get_openai_client()
     try:
         # Call the AI model (CHAT_MODEL) for a response
         response = await client.chat.completions.create(
-            messages=messages_with_systems,
+            messages=[{"role": "user", "content": messages_with_systems}],
             model=CHAT_MODEL,
             # Other parameters like temperature, max_tokens could be added here if needed
         )
