@@ -1,0 +1,32 @@
+[project]
+name = "simple-discord-chat-bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiocache",
+    "aiodns",
+    "aiofiles",
+    "aiohttp>3.8.6,",
+    "async-tinydb[all]",
+    "better-profanity",
+    "brotli",
+    "ffmpeg-python",
+    "flatlatex",
+    "imagehash",
+    "msgspec",
+    "networkx",
+    "openai",
+    "pillow",
+    "py-cord[speed,voice]",
+    "pynacl",
+    "python-dotenv",
+    "pyyaml",
+    "requests",
+    "types-aiofiles",
+    "types-requests",
+    "types-ujson",
+    "ujson",
+    "msgspec!=0.18.6",
+]
