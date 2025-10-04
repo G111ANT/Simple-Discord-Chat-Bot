@@ -2,6 +2,9 @@ import asyncio
 import datetime
 import logging
 import os
+import certifi
+import os
+os.environ["SSL_CERT_FILE"] = certifi.where()
 
 import aiofiles
 import asynctinydb as tinydb

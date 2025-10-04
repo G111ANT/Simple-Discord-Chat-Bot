@@ -19,7 +19,7 @@ dependencies = [
     "networkx",
     "openai",
     "pillow",
-    "py-cord[speed,voice]",
+    "discord.py[voice]",
     "pynacl",
     "python-dotenv",
     "pyyaml",
