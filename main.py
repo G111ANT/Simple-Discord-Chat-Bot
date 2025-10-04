@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     profile_picture = ""
 
-    discord_client = commands.Bot(intents=discord_intents)
+    discord_client = commands.Bot(intents=discord_intents, command_prefix="#")
 
     @discord_client.event
     async def on_ready():
@@ -184,7 +184,7 @@ if __name__ == "__main__":
                     # Fetch a limited history to check if a response is appropriate
                     logger.debug(f"Fetching limited history (10 messages) for scan in channel {message.channel.id}.")
                     limited_message_history = await chat.messages_from_history(
-                        await message.channel.history(limit=10).flatten(), # Get last 10 messages
+                        [m async for m in message.channel.history(limit=10)], # Get last 10 messages
                         message.created_at.timestamp(),
                         discord_client,
                         message.author.id,
@@ -203,7 +203,7 @@ if __name__ == "__main__":
                     # Fetch limited history for re-engagement check
                     logger.debug(f"Fetching limited history (10 messages) for re-engagement in channel {message.channel.id}.")
                     limited_message_history = await chat.messages_from_history(
-                        await message.channel.history(limit=10).flatten(),
+                        [m async for m in message.channel.history(limit=10)],
                         message.created_at.timestamp(),
                         discord_client,
                         message.author.id,
@@ -223,9 +223,10 @@ if __name__ == "__main__":
         logger.info(f'Responding to "{message.content}"')
 
         # Fetch and process message history for AI context
-        past_messages_raw = await message.channel.history(
-            # after=datetime.datetime.now() - datetime.timedelta(hours=12) # Consider limiting history fetch for performance/cost
-        ).flatten() # Get all available recent messages
+        past_messages_raw = [m async for m in message.channel.history()]
+        # await message.channel.history(
+        #     # after=datetime.datetime.now() - datetime.timedelta(hours=12) # Consider limiting history fetch for performance/cost
+        # ).flatten() # Get all available recent messages
 
         # `chat.messages_from_history` expects messages in oldest-to-newest order.
         # `message.channel.history()` returns newest-to-oldest by default.
@@ -281,164 +282,165 @@ if __name__ == "__main__":
                     chunk.strip(), reference=last_message_sent # Reference the bot's previous message part
                 )
 
-    @discord_client.slash_command(name="ask")
-    @discord.option(
-        "personality",
-        description="Choose personality",
-        choices=[i["user_name"] for i in tools.non_async_get_personalties()],
-    )
-    @discord.option("question", description="What's your question")
-    async def ask(interaction: discord.Interaction, personality: str, question: str):
-        """
-        Slash command to ask the bot a question with a specific personality.
+    # FIXME: fix commands
+    # @discord_client.add_command(command="ask")
+    # @discord.option(
+    #     "personality",
+    #     description="Choose personality",
+    #     choices=[i["user_name"] for i in tools.non_async_get_personalties()],
+    # )
+    # @discord.option("question", description="What's your question")
+    # async def ask(interaction: discord.Interaction, personality: str, question: str):
+    #     """
+    #     Slash command to ask the bot a question with a specific personality.
 
-        The user provides a personality name (from a predefined list) and a question.
-        The bot defers the interaction, fetches the chosen personality, gets a response
-        from the AI via `chat.get_response`, processes the response (clearing text,
-        removing LaTeX), and then sends the answer back. The initial response is
-        ephemeral, and subsequent parts (if any, due to message splitting) are
-        sent to the channel.
+    #     The user provides a personality name (from a predefined list) and a question.
+    #     The bot defers the interaction, fetches the chosen personality, gets a response
+    #     from the AI via `chat.get_response`, processes the response (clearing text,
+    #     removing LaTeX), and then sends the answer back. The initial response is
+    #     ephemeral, and subsequent parts (if any, due to message splitting) are
+    #     sent to the channel.
 
-        Args:
-            interaction (discord.Interaction): The interaction object from Discord.
-            personality (str): The name of the personality to use for the answer.
-            question (str): The question to ask the AI.
-        """
-        logger.info(f'Answering "{question}" with personality "{personality}"')
-        await interaction.response.defer(ephemeral=True) # Defer with an ephemeral placeholder
+    #     Args:
+    #         interaction (discord.Interaction): The interaction object from Discord.
+    #         personality (str): The name of the personality to use for the answer.
+    #         question (str): The question to ask the AI.
+    #     """
+    #     logger.info(f'Answering "{question}" with personality "{personality}"')
+    #     await interaction.response.defer(ephemeral=True) # Defer with an ephemeral placeholder
 
-        # Attempt to get channel, with retries, as it might not be immediately available in some contexts
-        channel = interaction.channel
-        if channel is None:
-            for _ in range(3): # Retry a few times
-                await asyncio.sleep(1)
-                channel = interaction.channel
-                if channel is not None:
-                    break
+    #     # Attempt to get channel, with retries, as it might not be immediately available in some contexts
+    #     channel = interaction.channel
+    #     if channel is None:
+    #         for _ in range(3): # Retry a few times
+    #             await asyncio.sleep(1)
+    #             channel = interaction.channel
+    #             if channel is not None:
+    #                 break
         
-        if channel is None: # If channel is still None after retries
-            logger.error("Could not determine channel for /ask command after retries.")
-            await interaction.followup.send("Sorry, I couldn't process your request in this channel right now.", ephemeral=True)
-            return
+    #     if channel is None: # If channel is still None after retries
+    #         logger.error("Could not determine channel for /ask command after retries.")
+    #         await interaction.followup.send("Sorry, I couldn't process your request in this channel right now.", ephemeral=True)
+    #         return
 
-        # Find the selected personality object from the loaded personalities
-        selected_personality_obj = None
-        all_personalities = await tools.get_personalties()
-        for p_obj in all_personalities:
-            if p_obj.get("user_name") == personality:
-                selected_personality_obj = p_obj
-                break
+    #     # Find the selected personality object from the loaded personalities
+    #     selected_personality_obj = None
+    #     all_personalities = await tools.get_personalties()
+    #     for p_obj in all_personalities:
+    #         if p_obj.get("user_name") == personality:
+    #             selected_personality_obj = p_obj
+    #             break
         
-        if selected_personality_obj is None: # Personality not found
-            logger.error(f"Personality '{personality}' not found for /ask command.")
-            await interaction.followup.send(f"Sorry, I couldn't find the personality '{personality}'.", ephemeral=True)
-            return
+    #     if selected_personality_obj is None: # Personality not found
+    #         logger.error(f"Personality '{personality}' not found for /ask command.")
+    #         await interaction.followup.send(f"Sorry, I couldn't find the personality '{personality}'.", ephemeral=True)
+    #         return
 
-        # Get response from AI using the question and selected personality
-        raw_response = await chat.get_response(
-            [{"role": "user", "content": question}], # History is just the user's question
-            personality=selected_personality_obj,
-        )
+    #     # Get response from AI using the question and selected personality
+    #     raw_response = await chat.get_response(
+    #         [{"role": "user", "content": question}], # History is just the user's question
+    #         personality=selected_personality_obj,
+    #     )
         
-        # Clean and process the raw AI response
-        cleaned_response = await tools.clear_text(raw_response)
-        final_response = await tools.remove_latex(cleaned_response) # Also styles LaTeX
+    #     # Clean and process the raw AI response
+    #     cleaned_response = await tools.clear_text(raw_response)
+    #     final_response = await tools.remove_latex(cleaned_response) # Also styles LaTeX
 
-        logger.info(f'Answer is "{final_response[:100]}..."') # Log a snippet of the answer
+    #     logger.info(f'Answer is "{final_response[:100]}..."') # Log a snippet of the answer
         
-        if not final_response or not final_response.strip(): # Handle empty response
-            await interaction.followup.send("I received an empty response, sorry!", ephemeral=True)
-            return
+    #     if not final_response or not final_response.strip(): # Handle empty response
+    #         await interaction.followup.send("I received an empty response, sorry!", ephemeral=True)
+    #         return
 
-        # Split the final response into Discord-friendly chunks
-        message_response_split = await tools.smart_text_splitter(final_response)
+    #     # Split the final response into Discord-friendly chunks
+    #     message_response_split = await tools.smart_text_splitter(final_response)
         
-        # Send the first part of the response as a followup to the (ephemeral) interaction
-        first_chunk_to_send = message_response_split[0].strip()
-        if first_chunk_to_send:
-            await interaction.followup.send(first_chunk_to_send, ephemeral=True)
-        else:
-            # This case (empty first chunk but other chunks exist) might indicate an issue or be by design.
-            await interaction.followup.send("The response seems to start with an empty part, but I'll send the rest if any.", ephemeral=True)
+    #     # Send the first part of the response as a followup to the (ephemeral) interaction
+    #     first_chunk_to_send = message_response_split[0].strip()
+    #     if first_chunk_to_send:
+    #         await interaction.followup.send(first_chunk_to_send, ephemeral=True)
+    #     else:
+    #         # This case (empty first chunk but other chunks exist) might indicate an issue or be by design.
+    #         await interaction.followup.send("The response seems to start with an empty part, but I'll send the rest if any.", ephemeral=True)
 
-        # Send any subsequent parts of the response publicly to the channel
-        if len(message_response_split) > 1:
-            logger.info(f"Sending {len(message_response_split) -1} additional chunks for /ask to channel {channel.id}")
-            # These subsequent messages are sent to the channel and are not ephemeral.
-            # They also don't directly reference the interaction's ephemeral response.
-            for split_chunk in message_response_split[1:]:
-                if split_chunk.strip():
-                    await channel.send(split_chunk.strip())
+    #     # Send any subsequent parts of the response publicly to the channel
+    #     if len(message_response_split) > 1:
+    #         logger.info(f"Sending {len(message_response_split) -1} additional chunks for /ask to channel {channel.id}")
+    #         # These subsequent messages are sent to the channel and are not ephemeral.
+    #         # They also don't directly reference the interaction's ephemeral response.
+    #         for split_chunk in message_response_split[1:]:
+    #             if split_chunk.strip():
+    #                 await channel.send(split_chunk.strip())
 
-    @discord_client.slash_command(name="summary")
-    async def summary(interaction: discord.Interaction):
-        """
-        Slash command to generate a summary of the recent chat history in the current channel.
+    # @discord_client.add_command(command="summary")
+    # async def summary(interaction: discord.Interaction):
+    #     """
+    #     Slash command to generate a summary of the recent chat history in the current channel.
 
-        The bot defers the interaction (ephemerally), fetches message history,
-        formats it, gets a summary from the AI via `chat.get_summary`, processes
-        the summary (clearing text, removing LaTeX), and sends the summary back
-        as an ephemeral message using `interaction.followup.send`.
+    #     The bot defers the interaction (ephemerally), fetches message history,
+    #     formats it, gets a summary from the AI via `chat.get_summary`, processes
+    #     the summary (clearing text, removing LaTeX), and sends the summary back
+    #     as an ephemeral message using `interaction.followup.send`.
 
-        Args:
-            interaction (discord.Interaction): The interaction object from Discord.
-        """
-        logger.info(f"Creating summary for channel {interaction.channel_id}")
-        await interaction.response.defer(ephemeral=True) # Defer with an ephemeral placeholder
+    #     Args:
+    #         interaction (discord.Interaction): The interaction object from Discord.
+    #     """
+    #     logger.info(f"Creating summary for channel {interaction.channel_id}")
+    #     await interaction.response.defer(ephemeral=True) # Defer with an ephemeral placeholder
 
-        # Attempt to get channel, with retries
-        channel = interaction.channel
-        if channel is None:
-            for _ in range(3):
-                await asyncio.sleep(1)
-                channel = interaction.channel
-                if channel is not None:
-                    break
+    #     # Attempt to get channel, with retries
+    #     channel = interaction.channel
+    #     if channel is None:
+    #         for _ in range(3):
+    #             await asyncio.sleep(1)
+    #             channel = interaction.channel
+    #             if channel is not None:
+    #                 break
         
-        if channel is None: # If channel still not found
-            logger.error(f"Could not determine channel for /summary command after retries for interaction {interaction.id}.")
-            await interaction.followup.send("ERROR: Could not access channel information.", ephemeral=True)
-            return
+    #     if channel is None: # If channel still not found
+    #         logger.error(f"Could not determine channel for /summary command after retries for interaction {interaction.id}.")
+    #         await interaction.followup.send("ERROR: Could not access channel information.", ephemeral=True)
+    #         return
 
-        # Fetch message history from the channel (Discord API returns newest first by default)
-        past_messages_raw = await channel.history(limit=100).flatten() # Fetch up to 100 recent messages
+    #     # Fetch message history from the channel (Discord API returns newest first by default)
+    #     past_messages_raw = await channel.history(limit=100).flatten() # Fetch up to 100 recent messages
 
-        if not past_messages_raw: # No messages found
-            logger.info(f"No messages found in channel {channel.id} for summary.")
-            await interaction.followup.send("No messages found to summarize.", ephemeral=True)
-            return
+    #     if not past_messages_raw: # No messages found
+    #         logger.info(f"No messages found in channel {channel.id} for summary.")
+    #         await interaction.followup.send("No messages found to summarize.", ephemeral=True)
+    #         return
 
-        # `chat.messages_from_history` expects messages oldest first.
-        # The `message_create_at` argument for `messages_from_history` is currently unused in that function.
-        # Here, we pass the interaction's creation time as a reference point.
-        message_history_for_ai = await chat.messages_from_history(
-            past_messages_raw[::-1], # Reverse to oldest first
-            interaction.created_at.timestamp(),
-            discord_client,
-            interaction.user.id, # ID of the user who invoked the command
-            image_db,
-        )
+    #     # `chat.messages_from_history` expects messages oldest first.
+    #     # The `message_create_at` argument for `messages_from_history` is currently unused in that function.
+    #     # Here, we pass the interaction's creation time as a reference point.
+    #     message_history_for_ai = await chat.messages_from_history(
+    #         past_messages_raw[::-1], # Reverse to oldest first
+    #         interaction.created_at.timestamp(),
+    #         discord_client,
+    #         interaction.user.id, # ID of the user who invoked the command
+    #         image_db,
+    #     )
 
-        if not message_history_for_ai: # If processing results in no usable history
-            logger.info(f"Message history for AI was empty after processing for channel {channel.id}.")
-            await interaction.followup.send("No processable messages found to summarize.", ephemeral=True)
-            return
+    #     if not message_history_for_ai: # If processing results in no usable history
+    #         logger.info(f"Message history for AI was empty after processing for channel {channel.id}.")
+    #         await interaction.followup.send("No processable messages found to summarize.", ephemeral=True)
+    #         return
         
-        # `chat.get_summary` expects messages oldest first, which `message_history_for_ai` is.
-        raw_summary = await chat.get_summary(message_history_for_ai)
+    #     # `chat.get_summary` expects messages oldest first, which `message_history_for_ai` is.
+    #     raw_summary = await chat.get_summary(message_history_for_ai)
         
-        # Clean and process the raw AI summary
-        cleaned_summary = await tools.clear_text(raw_summary)
-        final_summary = await tools.remove_latex(cleaned_summary) # Also styles LaTeX
+    #     # Clean and process the raw AI summary
+    #     cleaned_summary = await tools.clear_text(raw_summary)
+    #     final_summary = await tools.remove_latex(cleaned_summary) # Also styles LaTeX
 
-        if not final_summary or not final_summary.strip(): # Handle empty summary
-            logger.info(f"Summary was empty after processing for channel {channel.id}.")
-            await interaction.followup.send("I couldn't generate a summary from the recent messages.", ephemeral=True)
-            return
+    #     if not final_summary or not final_summary.strip(): # Handle empty summary
+    #         logger.info(f"Summary was empty after processing for channel {channel.id}.")
+    #         await interaction.followup.send("I couldn't generate a summary from the recent messages.", ephemeral=True)
+    #         return
 
-        logger.info(f'Summary for channel {channel.id} is "{final_summary[:100]}..."')
-        # Send the summary as an ephemeral followup, truncated if necessary
-        await interaction.followup.send(final_summary[:2000], ephemeral=True)
+    #     logger.info(f'Summary for channel {channel.id} is "{final_summary[:100]}..."')
+    #     # Send the summary as an ephemeral followup, truncated if necessary
+    #     await interaction.followup.send(final_summary[:2000], ephemeral=True)
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])

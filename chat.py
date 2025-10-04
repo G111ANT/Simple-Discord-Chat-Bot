@@ -508,6 +508,7 @@ async def text_summary(text: str) -> str:
 
 @cached(ttl=3600)
 async def text_sanitize(text: str) -> str:
+    return text
     # Check cache first
     TextQuery = tinydb.Query()
     cached_entry = await text_processing_cache_db.search((TextQuery.original_text == text) & (TextQuery.type == 'sanitize'))
@@ -909,9 +910,6 @@ async def get_chat_response(
     if content is None: # Should not happen with a successful API call
         return ""
 
-    # Post-process the AI's response:
-    # 1. Apply any model-specific text replacements.
-    # 2. Clean the text (remove comments, handle profanity).
     replacement_string = CHAT_MODEL_REPLACE if CHAT_MODEL_REPLACE is not None else ""
     processed_content = await tools.model_text_replace(content, replacement_string)
     # processed_content = await text_sanitize(processed_content)
