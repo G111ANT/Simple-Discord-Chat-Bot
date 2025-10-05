@@ -71,7 +71,7 @@ async def messages_from_history(
     message_history_to_compress = []
     current_char_count = 0
 
-    for past_message in past_messages:
+    for past_message in past_messages[::-1]:
         role = "user"
         if past_message.author.id == discord_client.application_id:
             role = "chat_bot"
@@ -171,7 +171,7 @@ async def messages_from_history(
 
     if message_history_to_compress:
         final_summary_data = ""
-        for message in message_history:
+        for message in message_history[::-1]:
             final_summary_data += "<MESSAGE>\n"
 
             final_summary_data += f"<TYPE>{message['type']}</TYPE>\n"
@@ -188,9 +188,9 @@ async def messages_from_history(
             final_summary_data += "</MESSAGE>\n"
         summary_of_older_messages = await get_summary(final_summary_data)
         if summary_of_older_messages:
-            final_data = f"<SUMMARY>\n{summary_of_older_messages}\n</SUMMARY>"
+            final_data = f"<PAST_SUMMARY>\n{summary_of_older_messages}\n</PAST_SUMMARY>\n\n"
     
-    for message in message_history:
+    for message in message_history[::-1]:
         final_data += "<MESSAGE>\n"
 
         final_data += f"<TYPE>{message['type']}</TYPE>\n"
@@ -324,7 +324,13 @@ async def text_summary(text: str) -> str:
         return cached_entry[0]['processed_text']
 
     client = _get_openai_client()
-    summarize_prompt_text = f"Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. Only respond with the new version, otherwise return only ERROR, and nothing else.\n\nText:\n{text}\n\nNew text:\n"
+    summarize_prompt_text = (
+        "Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. "
+        "Only respond with the new version, otherwise return only ERROR, and nothing else."
+        "\n\n"
+        "Text:\n{text}"
+        "\n\n"
+        "New text:\n")
     summarize_prompt = {"role": "user", "content": summarize_prompt_text}
 
     try:
@@ -394,10 +400,11 @@ async def get_summary(messages: str) -> str:
     client = _get_openai_client()
 
     summarize_prompt_text = (
-        "Your job is to generate a concise, single paragraph summary of the discussions. "
+        "Your job is to generate a concise, 100 word summary of the discussions. "
         "Focus on more recent messages. "
         "When you see `chat_bot` that is you. "
         "The messages are in xml format,\n"
+        " - **PAST_SUMMARY** is the summary of the conversation before the current one\n"
         " - **TYPE** is the type of author (`chat_bot` (you), `user`, or `other_bot`)\n"
         # " - **USER_ID** is the id of the author (this can be ignored)\n"
         " - **USER_NAME** is the name of the author (NOTE: your name might not be `chat_bot`)\n"
@@ -417,7 +424,7 @@ async def get_summary(messages: str) -> str:
         max_tokens=300,
     )
     content = response.choices[0].message.content
-    return await tools.clear_text(content) if content else ""
+    return content
 
 
 async def should_respond(
@@ -474,11 +481,11 @@ async def get_response(
     if personality is None:
         current_personality = ""
     else:
-        current_personality = [m for m in personality.get("messages", [{}]) if isinstance(m, dict) and m.get("role", "") == "system"]
+        current_personality = [m for m in personality.get("messages", []) if isinstance(m, dict) and m.get("role", "") == "system"]
         if len(current_personality) == 0:
             current_personality = ""
         elif isinstance(current_personality[0], str):
-            current_personality = current_personality[0]
+            current_personality = current_personality[0].get("content", "A discord chat bot.")
 
     return await get_chat_response(messages, str(current_personality))
 
@@ -499,6 +506,7 @@ async def get_chat_response(
         "When you see `chat_bot` that is you."
         # "You can mention people by `<@user_id>`, where user id is there id, (so if there id is `10`, then the mention would look like `<@10>`)."
         "The messages are in xml format,\n"
+        " - **PAST_SUMMARY** is the summary of the conversation before the current one\n"
         " - **TYPE** is the type of author (`chat_bot` (you), `user`, or `other_bot`)\n"
         # " - **USER_ID** is the id of the author\n"
         " - **USER_NAME** is the name of the author (NOTE: your name might not be `chat_bot`)\n"
@@ -509,7 +517,6 @@ async def get_chat_response(
         "Unless asked, do not repeat past messages"
         "The final message must be in a xml called `RESPONSE` example: `<RESPONSE>I love chess.</RESPONSE>`.\n"
         "```XML\n"
-        "\n\n"
         f"{personality_str}"
         "\n\n"
         f"{messages}"
