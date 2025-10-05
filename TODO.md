@@ -1,4 +1,6 @@
-- [x] Add latex (~~pylatexenc~~flatlatex)
 - [ ] Add images description
-- [x] Add slash commands
-- [x] Add auto response
+- [ ] Add slash commands
+- [ ] Add different cleaning for input (remove all xml like tags, etc) and output (latex -> unicode, etc)
+- [ ] Add doctests and docstrings
+- [ ] Improve prompting
+- [ ] Find better roleplaying model (cheapest model that works well)
