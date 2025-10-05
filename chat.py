@@ -163,7 +163,6 @@ async def messages_from_history(
         else:
             message_history_to_compress.append(message_data)
 
-
     final_data = ""
 
     if message_history_to_compress:
@@ -499,7 +498,7 @@ async def get_chat_response(
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
         " - **CONTENT** is the actual message\n"
         " - **IMAGE** is a list of images sent with the message\n"
-        "you should only repond with the message, no think, no xml tags (your response should NOT be xml), only the message.\n"
+        "Think step-by-step. The final message should be in a xml called `RESPONSE` like: `<RESPONSE>message here</RESPONSE>`.\n"
         "```XML\n"
         "\n\n"
         f"{personality_str}"
@@ -521,6 +520,15 @@ async def get_chat_response(
 
     if content is None:
         return ""
+
+    re_content = re.findall(r"<RESPONSE>.+<\/RESPONSE>", content, flags=re.DOTALL|re.IGNORECASE)
+    if not re_content:
+        return ""
+    
+    content = re_content[-1]
+    content = re.sub(r"^<RESPONSE>", "", content, 1, flags=re.IGNORECASE)
+    content = re.sub(r"<\/RESPONSE>$", "", content, 1, flags=re.IGNORECASE)
+    content = content.strip()
 
     replacement_string = CHAT_MODEL_REPLACE if CHAT_MODEL_REPLACE is not None else ""
     processed_content = await tools.model_text_replace(content, replacement_string)

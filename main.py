@@ -188,7 +188,7 @@ if __name__ == "__main__":
             logger.info("Message history is empty after processing, not responding.")
             return
 
-        logger.info(f"Sent \"{message_history[:1000]}...\" (newest) to the AI from history of {len(message_history)}")
+        logger.info(f"Sent \"{message_history[:100]}...\" (newest) to the AI from history of {len(message_history)}")
 
         message_response_raw = await chat.get_response(message_history)
         
