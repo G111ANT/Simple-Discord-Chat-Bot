@@ -81,6 +81,9 @@ if __name__ == "__main__":
         current_personality = (await tools.get_personality())[0]
         logger.debug(f"Current personality: {current_personality['user_name']}")
         
+        pers = await tools.get_personality() # type: ignore
+        pers: dict | None = pers[0] if isinstance(pers, tuple) and len(pers) > 0 else None # type: ignore
+
         if message.guild is not None and message.guild.me.nick != current_personality["user_name"]:
             logger.info(f"Attempting to update nickname to '{current_personality['user_name']}' in guild {message.guild.id}")
             try:
@@ -145,7 +148,7 @@ if __name__ == "__main__":
                         image_db,
                     )
                     logger.debug(f"AI_CALL: chat.should_respond for scan (history len: {len(limited_message_history)}).")
-                    respond = await chat.should_respond(limited_message_history, past_messages[0].content)
+                    respond = await chat.should_respond(limited_message_history, past_messages[0].content, pers)
                     logger.info(f"AI_RESULT: chat.should_respond (scan) returned: {respond} for channel {message.channel.id}.")
                 
                 time_since_last_chat = now - last_chat_dt
@@ -162,7 +165,7 @@ if __name__ == "__main__":
                         message.author.id,
                         image_db,
                     )
-                    respond = await chat.should_respond(limited_message_history, past_messages[0].content)
+                    respond = await chat.should_respond(limited_message_history, past_messages[0].content, pers)
     
         if not respond:
             return
@@ -190,11 +193,13 @@ if __name__ == "__main__":
 
         logger.info(f"Sent \"{message_history[:100]}...\" (newest) to the AI from history of {len(message_history)}")
 
-        message_response_raw = await chat.get_response(message_history)
-        
+        message_response_raw = await chat.get_response(message_history, pers)
+        if len(message_response_raw.strip()) == 0:
+            return
         message_response_cleaned = await tools.clear_text(message_response_raw)
         message_response_final = await tools.remove_latex(message_response_cleaned)
-        
+
+
         message_response_split = await tools.smart_text_splitter(message_response_final)
 
         if not message_response_split or not message_response_split[0].strip():

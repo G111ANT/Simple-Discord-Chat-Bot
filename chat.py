@@ -112,10 +112,7 @@ async def messages_from_history(
             not FILTER_IMAGES
             and (len(past_message.attachments) + len(past_message.embeds)) > 0
             and (MAX_HISTORY_CHARACTERS - current_char_count) > 0
-        ):
-            if content:
-                content += "\n"
-            
+        ):            
             for attachment in past_message.attachments:
                 try:
                     description = await asyncio.wait_for(image_describe(attachment.url, image_db), timeout=10)
@@ -144,6 +141,8 @@ async def messages_from_history(
         else:
             dt_object = datetime.datetime.fromtimestamp(past_message.created_at.timestamp())
         
+        if len(content) == 0 and len(image_markdown) == 0:
+            continue
 
         message_len = len(content.strip()) + len(role)
         
@@ -176,11 +175,12 @@ async def messages_from_history(
             final_summary_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
             if message['mention_chat_bot']:
                 final_data += f"<MENTION>chat_bot</MENTION>\n"
-            final_summary_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
+            if len(message['content']) > 0:
+                final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
             for image in message['images']:
                 final_summary_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
 
-            final_summary_data += "</MESSAGE>\n\n"
+            final_summary_data += "</MESSAGE>\n"
         summary_of_older_messages = await get_summary(final_summary_data)
         if summary_of_older_messages:
             final_data = f"<SUMMARY>\n{summary_of_older_messages}\n</SUMMARY>"
@@ -194,11 +194,12 @@ async def messages_from_history(
         final_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
         if message['mention_chat_bot']:
             final_data += f"<MENTION>chat_bot</MENTION>\n"
-        final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
+        if len(message['content']) > 0:
+            final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
         for image in message['images']:
             final_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
 
-        final_data += "</MESSAGE>\n\n"
+        final_data += "</MESSAGE>\n"
 
     return final_data.strip()
 
@@ -393,6 +394,7 @@ async def get_summary(messages: str) -> str:
         "When you see `chat_bot` that is you."
         "The messages are in xml format,\n"
         " - **TYPE** is the type of author (`chat_bot` (you), `user`, or `other_bot`)\n"
+        # " - **USER_ID** is the id of the author (this can be ignored)\n"
         " - **USER_NAME** is the name of the author (NOTE: your name might not be `chat_bot`)\n"
         " - **TIME** is when the message was sent\n"
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
@@ -486,19 +488,21 @@ async def get_chat_response(
         return ""
 
     personality_str = personality
-    
     personality_str = f"<PERSONALITY>{personality_str}</PERSONALITY>"
     messages_with_systems = (
         "Your job is to repsond to the messages they way a bot with the personality in the **PERSONALITY** tags would."
         "When you see `chat_bot` that is you."
+        # "You can mention people by `<@user_id>`, where user id is there id, (so if there id is `10`, then the mention would look like `<@10>`)."
         "The messages are in xml format,\n"
         " - **TYPE** is the type of author (`chat_bot` (you), `user`, or `other_bot`)\n"
+        # " - **USER_ID** is the id of the author\n"
         " - **USER_NAME** is the name of the author (NOTE: your name might not be `chat_bot`)\n"
         " - **TIME** is when the message was sent\n"
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
         " - **CONTENT** is the actual message\n"
-        " - **IMAGE** is a list of images sent with the message\n"
-        "Think step-by-step. The final message should be in a xml called `RESPONSE` like: `<RESPONSE>message here</RESPONSE>`.\n"
+        " - **IMAGE** is a list of images sent with the message\n\n"
+        "Unless asked, do not repeat past messages"
+        "The final message must be in a xml called `RESPONSE` example: `<RESPONSE>I love chess.</RESPONSE>`.\n"
         "```XML\n"
         "\n\n"
         f"{personality_str}"
@@ -521,6 +525,8 @@ async def get_chat_response(
     if content is None:
         return ""
 
+    logger.info(f"response: {content[:100]}")
+
     re_content = re.findall(r"<RESPONSE>.+<\/RESPONSE>", content, flags=re.DOTALL|re.IGNORECASE)
     if not re_content:
         return ""
@@ -532,4 +538,4 @@ async def get_chat_response(
 
     replacement_string = CHAT_MODEL_REPLACE if CHAT_MODEL_REPLACE is not None else ""
     processed_content = await tools.model_text_replace(content, replacement_string)
-    return await tools.clear_text(processed_content)
+    return processed_content
