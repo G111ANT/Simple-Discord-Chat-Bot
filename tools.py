@@ -25,7 +25,7 @@ class NotTooLongStringFormatter(logging.Formatter):
         DEFAULT_MAX_LENGTH (int): The default maximum length for log messages.
         max_length (int): The maximum length for log messages for this instance.
     """
-    DEFAULT_MAX_LENGTH = 1000 # Increased default, and made it a class attribute
+    DEFAULT_MAX_LENGTH = 1000
 
     def __init__(self, max_length: int | None = None, *args, **kwargs):
         """
@@ -37,7 +37,7 @@ class NotTooLongStringFormatter(logging.Formatter):
             *args: Additional arguments for the base Formatter class.
             **kwargs: Additional keyword arguments for the base Formatter class.
         """
-        super().__init__(*args, **kwargs) # Pass through other formatter args
+        super().__init__(*args, **kwargs)
         self.max_length = max_length if max_length is not None else self.DEFAULT_MAX_LENGTH
 
     def format(self, record: logging.LogRecord) -> str:
@@ -50,24 +50,15 @@ class NotTooLongStringFormatter(logging.Formatter):
         Returns:
             str: The formatted log message.
         """
-        # Ensure record.msg is a string before processing
         original_msg = str(getattr(record, 'msg', ''))
         
-        # Replace newlines for single-line log preview, but do it on a copy
-        # This formatted_msg is only for the length check logic.
         formatted_msg_for_length_check = original_msg.replace("\n", "|n")
         
-        if len(formatted_msg_for_length_check) > self.max_length: # Simplified length check
-            # Truncate the original message for the actual log output
+        if len(formatted_msg_for_length_check) > self.max_length:
             record.msg = original_msg[:self.max_length - 3] + "..."
         else:
-            # If not truncating, use the original message
             record.msg = original_msg
 
-        # Important: The above modifications to record.msg are for the Formatter's internal processing.
-        # If the original record.msg should remain unchanged for other handlers,
-        # a copy of the record should be made or the formatted string returned directly.
-        # For typical logging, modifying record.msg before super().format() is standard.
         return super().format(record)
 
 
@@ -107,45 +98,37 @@ async def smart_text_splitter(text: str, max_chunk_size: int = 2000) -> list[str
     if not text:
         return []
 
-    # Normalize spaces: split by space and then rejoin with single spaces.
-    # This handles multiple spaces between words and leading/trailing spaces effectively.
-    words = [word for word in text.split(" ") if word] # Filter out empty strings from multiple spaces
+    words = [word for word in text.split(" ") if word]
 
-    if not words: # If text was only spaces or empty
+    if not words:
         return []
 
     chunks = []
     current_chunk = ""
 
     for word in words:
-        # Handle words longer than max_chunk_size
         if len(word) > max_chunk_size:
-            # If current_chunk is not empty, add it first
             if current_chunk:
-                chunks.append(current_chunk) # No strip needed as current_chunk is built carefully
+                chunks.append(current_chunk)
                 current_chunk = ""
             
-            # Split the long word itself
             for i in range(0, len(word), max_chunk_size):
                 chunks.append(word[i:i + max_chunk_size])
             continue
 
-        # Check if adding the new word (plus a space) exceeds the limit
         if len(current_chunk) + len(word) + (1 if current_chunk else 0) > max_chunk_size:
-            if current_chunk: # Add the current_chunk if it has content
+            if current_chunk:
                 chunks.append(current_chunk)
-            current_chunk = word # Start new chunk with the current word
+            current_chunk = word
         else:
-            if current_chunk: # Add space if current_chunk is not empty
+            if current_chunk:
                 current_chunk += " " + word
             else:
-                current_chunk = word # Start new chunk
+                current_chunk = word
     
-    # Add the last remaining chunk
     if current_chunk:
         chunks.append(current_chunk)
     
-    # Filter out any potential empty strings that might have been added (should be less likely now)
     return [chunk for chunk in chunks if chunk]
 
 
@@ -180,13 +163,13 @@ async def remove_latex(text: str) -> str:
     'Text with *x* and also *y* inline blocks.'
     >>> asyncio.run(remove_latex("Invalid LaTeX: $\\invalidcommand$"))
     'Invalid LaTeX: [LaTeX Error: \\\\invalidcommand]'
-    >>> asyncio.run(remove_latex("An empty inline $ $ equation.")) # Should effectively remove it or leave minimal space
+    >>> asyncio.run(remove_latex("An empty inline $ $ equation."))
     'An empty inline  equation.'
     >>> asyncio.run(remove_latex("An empty display $$ $$ equation."))
     'An empty display \\n\\n equation.'
-    >>> asyncio.run(remove_latex("$")) # Single delimiter
+    >>> asyncio.run(remove_latex("$"))
     '$'
-    >>> asyncio.run(remove_latex("$$")) # Only display delimiters
+    >>> asyncio.run(remove_latex("$$"))
     '\\n*DISPLAY\\_MATH\\_MARKER*\\n'
     >>> asyncio.run(remove_latex("Text $latex$ text"))
     'Text *latex* text'
@@ -198,20 +181,16 @@ async def remove_latex(text: str) -> str:
     if not text:
         return ""
 
-    # Standardize LaTeX delimiters
     text = text.replace(r"\(", "$")
     text = text.replace(r"\)", "$")
-    text = text.replace(r"\[", " $$ ") # Add spaces to help isolate $$
+    text = text.replace(r"\[", " $$ ")
     text = text.replace(r"\]", " $$ ")
 
-    # Further normalize to ensure single $ for splitting, but mark display math
     text_for_splitting = text.replace("$$", "\n$DISPLAY_MATH_MARKER$\n")
     
     parts = text_for_splitting.split('$')
-    # If only one part and no display marker, it means no '$' was found or only '$$' which became a marker.
-    # If text was just "$$", parts would be ['', 'DISPLAY_MATH_MARKER', '\n']
     if len(parts) == 1 and "DISPLAY_MATH_MARKER" not in parts[0]:
-        return text # Return original if no actual $ delimiters were processed to split
+        return text
 
     c = flatlatex.converter()
     result_parts = []
@@ -219,18 +198,12 @@ async def remove_latex(text: str) -> str:
     is_latex_segment = text_for_splitting.startswith('$')
     
     for i, segment in enumerate(parts):
-        # This logic handles cases where split() creates empty strings
-        # e.g., "$latex$".split('$') -> ['', 'latex', '']
-        # or "text$latex$".split('$') -> ['text', 'latex', '']
-        # or "$$latex$$".split('$') -> ['\n', 'DISPLAY_MATH_MARKER', '\nlatex\n', 'DISPLAY_MATH_MARKER', '\n'] (incorrect example, see below)
-        # Correct for "$$latex$$" -> text_for_splitting = "\n$DISPLAY_MATH_MARKER$\nlatex\n$DISPLAY_MATH_MARKER$\n"
-        # parts = ['', 'DISPLAY_MATH_MARKER', '\nlatex\n', 'DISPLAY_MATH_MARKER', '\n']
 
         if is_latex_segment:
             is_display_math = "DISPLAY_MATH_MARKER" in segment
             actual_latex_content = segment.replace("DISPLAY_MATH_MARKER", "").strip()
 
-            if actual_latex_content: # If there's content to convert
+            if actual_latex_content:
                 try:
                     converted_text = c.convert(actual_latex_content)
                     safe_converted_text = converted_text.replace("*", r"\*")
@@ -241,13 +214,9 @@ async def remove_latex(text: str) -> str:
                 except Exception as e:
                     logger.error(f"Failed to convert LaTeX: '{actual_latex_content}'. Error: {e}")
                     result_parts.append(f"[LaTeX Error: {actual_latex_content}]")
-            elif is_display_math: # Empty display math block e.g. $$ $$ or marked by DISPLAY_MATH_MARKER
+            elif is_display_math:
                 result_parts.append("\n\n")
-            # else: empty inline math e.g., $ $ - this segment would be empty or just whitespace.
-            # If it was just whitespace, it gets skipped. If it was empty, it's fine.
-        else: # This is a plain text segment
-            # Restore display marker if it was part of a text segment (shouldn't happen with current logic)
-            # but important if segment could contain "DISPLAY_MATH_MARKER" as plain text.
+        else:
             result_parts.append(segment.replace("DISPLAY_MATH_MARKER", "$$"))
 
         is_latex_segment = not is_latex_segment
@@ -277,7 +246,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
     'orange grape orange'
     >>> asyncio.run(model_text_replace("test", ""))
     'test'
-    >>> asyncio.run(model_text_replace("test", "odd,number,of,elements")) # Odd number, no replacement
+    >>> asyncio.run(model_text_replace("test", "odd,number,of,elements"))
     'test'
     >>> asyncio.run(model_text_replace("find me", "find,replace,me,too"))
     'replace too'
@@ -294,20 +263,17 @@ async def model_text_replace(text: str, replace_str: str) -> str:
         return text
 
     for i in range(0, len(replace_list), 2):
-        # Ensure there's a pair to replace (already guaranteed by even length check, but good practice)
         if i + 1 < len(replace_list):
             text_to_find = replace_list[i]
             text_to_replace_with = replace_list[i+1]
             text = text.replace(text_to_find, text_to_replace_with)
-        # No 'else' needed because the length check ensures pairs.
     return text
 
 
 async def clear_text(string: str) -> str:
     """
-    Cleans a string by removing HTML-like comments and censoring profanity.
+    censoring profanity.
 
-    HTML comments (<!--- ... -->) are removed.
     Profane words are wrapped in Discord spoiler tags (||word||).
     If the string becomes empty after cleaning, a zero-width space is returned.
 
@@ -319,15 +285,11 @@ async def clear_text(string: str) -> str:
 
     Doctests:
     >>> import asyncio
-    >>> # profanity.load_censor_words() # Ensure profanity words are loaded for doctests if not globally done
-    >>> asyncio.run(clear_text("Hello <!--- comment ---> world"))
-    'Hello  world'
-    >>> asyncio.run(clear_text("This is a damn test.")) # Assuming 'damn' is a profane word
+    >>>
+    >>> asyncio.run(clear_text("This is a damn test."))
     'This is a ||damn|| test.'
     >>> asyncio.run(clear_text("Clean string."))
     'Clean string.'
-    >>> asyncio.run(clear_text("<!--- entire string is a comment --->"))
-    '\\u200e'
     >>> asyncio.run(clear_text("  leading and trailing spaces  "))
     'leading and trailing spaces'
     >>> asyncio.run(clear_text(""))
@@ -335,28 +297,20 @@ async def clear_text(string: str) -> str:
     """
     logger.info(f"Cleaning text. Input snippet: {string[:100]}...")
     
-    # Remove HTML-like comments using a non-greedy match
-    cleaned_string = re.sub(r"<!---.*?-->", "", string, flags=re.DOTALL)
-    
-    # Process profanity
-    # Split by space, process, then rejoin. This handles multiple spaces better.
-    words = cleaned_string.split(" ")
+    words = string.split(" ")
     processed_words = []
     for word in words:
-        # Check non-empty word to avoid issues with multiple spaces creating empty strings in `words`
         if word and profanity.contains_profanity(word.strip("||").strip()):
             processed_words.append(f'||{word.strip().strip("|")}||')
         else:
-            processed_words.append(word) # Append even if empty to preserve space structure if needed
+            processed_words.append(word)
     
-    cleaned_string = " ".join(processed_words) # Rejoin
+    cleaned_string = " ".join(processed_words)
     
-    # Strip leading/trailing whitespace that might result from comment removal or original string
     cleaned_string = cleaned_string.strip()
     
-    # If the string becomes empty after cleaning, add a zero-width space.
     if not cleaned_string:
-        cleaned_string = "\u200E"  # Zero-width space (LEFT-TO-RIGHT MARK)
+        cleaned_string = "\u200E"
         
     return cleaned_string
 
@@ -365,7 +319,7 @@ PERSONALITY_FILE_PATH = "./config/personality.json"
 
 # Module-level variable to store the personalities
 # Type hint for a single personality dictionary
-PersonalityDict = dict[str, str | list[dict[str, str]] | bool | int | float] # More general type
+PersonalityDict = dict[str, str | list[dict[str, str]] | bool | int | float]
 PersonalitiesTuple = tuple[PersonalityDict, ...]
 
 # Initialize personalities as None to indicate it hasn't been loaded/set.
@@ -386,13 +340,11 @@ def non_async_get_personalties() -> PersonalitiesTuple:
     """
     try:
         with open(PERSONALITY_FILE_PATH, "r", encoding="utf-8") as file:
-            data = ujson.load(file) # ujson.load directly from file object
+            data = ujson.load(file)
             systems = data.get("systems", [])
             if not isinstance(systems, list):
                 logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list.")
                 return ()
-            # Further validation could be added here to check structure of each dict in systems
-            # Ensure all items in systems are dictionaries
             if not all(isinstance(item, dict) for item in systems):
                 logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries.")
                 return ()
@@ -428,7 +380,6 @@ async def get_personalties() -> PersonalitiesTuple:
             if not isinstance(systems, list):
                 logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list.")
                 return ()
-            # Ensure all items in systems are dictionaries
             if not all(isinstance(item, dict) for item in systems):
                 logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries.")
                 return ()
@@ -461,16 +412,16 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
                             Returns an empty tuple if no personalities are available
                             or if issues occur.
     """
-    global personalities # Declare that we are modifying the module-level 'personalities'
+    global personalities
     
     available_personalities = await get_personalties()
     if not available_personalities:
         logger.warning("No personalities available from file to update the current set.")
-        if personalities is None: # If never initialized and file is empty/corrupt
+        if personalities is None:
              personalities = ()
-        return personalities # Return current (possibly empty) if no new ones to choose from
+        return personalities
 
-    if personalities is None or not personalities: # First time loading or current list is empty
+    if personalities is None or not personalities:
         num_to_sample = min(k, len(available_personalities))
         if num_to_sample == 0 and len(available_personalities) > 0:
             personalities = (random.choice(available_personalities),)
@@ -521,7 +472,6 @@ async def update_personality_wrapper(ttl: int = 3600) -> None:
     while True:
         await update_personality()
         await sleep(ttl)
-    # This function runs indefinitely, so 'return' is effectively unreachable in normal operation.
 
 async def get_personality() -> PersonalitiesTuple:
     """
@@ -538,7 +488,6 @@ async def get_personality() -> PersonalitiesTuple:
     if personalities is None:
         logger.info("Personalities not yet loaded, initializing...")
         await update_personality()
-        # update_personality sets the global 'personalities'
     
     return personalities if personalities is not None else ()
 
@@ -552,7 +501,7 @@ async def start_personality() -> None:
     Then, it creates a background asyncio task to periodically update
     the personalities using `update_personality_wrapper`.
     """
-    await get_personality() # Ensures initial load
+    await get_personality()
     
     asyncio.create_task(update_personality_wrapper())
     logger.info("Personality update wrapper task started.")
