@@ -25,6 +25,7 @@ class NotTooLongStringFormatter(logging.Formatter):
         DEFAULT_MAX_LENGTH (int): The default maximum length for log messages.
         max_length (int): The maximum length for log messages for this instance.
     """
+
     DEFAULT_MAX_LENGTH = 1000
 
     def __init__(self, max_length: int | None = None, *args, **kwargs):
@@ -38,7 +39,9 @@ class NotTooLongStringFormatter(logging.Formatter):
             **kwargs: Additional keyword arguments for the base Formatter class.
         """
         super().__init__(*args, **kwargs)
-        self.max_length = max_length if max_length is not None else self.DEFAULT_MAX_LENGTH
+        self.max_length = (
+            max_length if max_length is not None else self.DEFAULT_MAX_LENGTH
+        )
 
     def format(self, record: logging.LogRecord) -> str:
         """
@@ -50,12 +53,12 @@ class NotTooLongStringFormatter(logging.Formatter):
         Returns:
             str: The formatted log message.
         """
-        original_msg = str(getattr(record, 'msg', ''))
-        
+        original_msg = str(getattr(record, "msg", ""))
+
         formatted_msg_for_length_check = original_msg.replace("\n", "|n")
-        
+
         if len(formatted_msg_for_length_check) > self.max_length:
-            record.msg = original_msg[:self.max_length - 3] + "..."
+            record.msg = original_msg[: self.max_length - 3] + "..."
         else:
             record.msg = original_msg
 
@@ -111,12 +114,15 @@ async def smart_text_splitter(text: str, max_chunk_size: int = 2000) -> list[str
             if current_chunk:
                 chunks.append(current_chunk)
                 current_chunk = ""
-            
+
             for i in range(0, len(word), max_chunk_size):
-                chunks.append(word[i:i + max_chunk_size])
+                chunks.append(word[i : i + max_chunk_size])
             continue
 
-        if len(current_chunk) + len(word) + (1 if current_chunk else 0) > max_chunk_size:
+        if (
+            len(current_chunk) + len(word) + (1 if current_chunk else 0)
+            > max_chunk_size
+        ):
             if current_chunk:
                 chunks.append(current_chunk)
             current_chunk = word
@@ -125,10 +131,10 @@ async def smart_text_splitter(text: str, max_chunk_size: int = 2000) -> list[str
                 current_chunk += " " + word
             else:
                 current_chunk = word
-    
+
     if current_chunk:
         chunks.append(current_chunk)
-    
+
     return [chunk for chunk in chunks if chunk]
 
 
@@ -187,16 +193,16 @@ async def remove_latex(text: str) -> str:
     text = text.replace(r"\]", " $$ ")
 
     text_for_splitting = text.replace("$$", "\n$DISPLAY_MATH_MARKER$\n")
-    
-    parts = text_for_splitting.split('$')
+
+    parts = text_for_splitting.split("$")
     if len(parts) == 1 and "DISPLAY_MATH_MARKER" not in parts[0]:
         return text
 
     c = flatlatex.converter()
     result_parts = []
-    
-    is_latex_segment = text_for_splitting.startswith('$')
-    
+
+    is_latex_segment = text_for_splitting.startswith("$")
+
     for i, segment in enumerate(parts):
 
         if is_latex_segment:
@@ -209,10 +215,12 @@ async def remove_latex(text: str) -> str:
                     safe_converted_text = converted_text.replace("*", r"\*")
                     final_segment_text = "*" + safe_converted_text + "*"
                     if is_display_math:
-                         final_segment_text = "\n" + final_segment_text + "\n"
+                        final_segment_text = "\n" + final_segment_text + "\n"
                     result_parts.append(final_segment_text)
                 except Exception as e:
-                    logger.error(f"Failed to convert LaTeX: '{actual_latex_content}'. Error: {e}")
+                    logger.error(
+                        f"Failed to convert LaTeX: '{actual_latex_content}'. Error: {e}"
+                    )
                     result_parts.append(f"[LaTeX Error: {actual_latex_content}]")
             elif is_display_math:
                 result_parts.append("\n\n")
@@ -251,21 +259,25 @@ async def model_text_replace(text: str, replace_str: str) -> str:
     >>> asyncio.run(model_text_replace("find me", "find,replace,me,too"))
     'replace too'
     """
-    logger.info(f"Attempting to replace text from model output. Input snippet: {text[:100]}...")
-    
+    logger.info(
+        f"Attempting to replace text from model output. Input snippet: {text[:100]}..."
+    )
+
     if not replace_str:
         return text
-        
+
     replace_list = replace_str.split(",")
 
     if len(replace_list) % 2 != 0:
-        logger.warning(f"Replacement string '{replace_str}' has an odd number of elements. Skipping replacements.")
+        logger.warning(
+            f"Replacement string '{replace_str}' has an odd number of elements. Skipping replacements."
+        )
         return text
 
     for i in range(0, len(replace_list), 2):
         if i + 1 < len(replace_list):
             text_to_find = replace_list[i]
-            text_to_replace_with = replace_list[i+1]
+            text_to_replace_with = replace_list[i + 1]
             text = text.replace(text_to_find, text_to_replace_with)
     return text
 
@@ -296,7 +308,7 @@ async def clear_text(string: str) -> str:
     '\\u200e'
     """
     logger.info(f"Cleaning text. Input snippet: {string[:100]}...")
-    
+
     words = string.split(" ")
     processed_words = []
     for word in words:
@@ -304,14 +316,14 @@ async def clear_text(string: str) -> str:
             processed_words.append(f'||{word.strip().strip("|")}||')
         else:
             processed_words.append(word)
-    
+
     cleaned_string = " ".join(processed_words)
-    
+
     cleaned_string = cleaned_string.strip()
-    
+
     if not cleaned_string:
-        cleaned_string = "\u200E"
-        
+        cleaned_string = "\u200e"
+
     return cleaned_string
 
 
@@ -324,6 +336,7 @@ PersonalitiesTuple = tuple[PersonalityDict, ...]
 
 # Initialize personalities as None to indicate it hasn't been loaded/set.
 personalities: PersonalitiesTuple | None = None
+
 
 def non_async_get_personalties() -> PersonalitiesTuple:
     """
@@ -343,21 +356,28 @@ def non_async_get_personalties() -> PersonalitiesTuple:
             data = ujson.load(file)
             systems = data.get("systems", [])
             if not isinstance(systems, list):
-                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list.")
+                logger.error(
+                    f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list."
+                )
                 return ()
             if not all(isinstance(item, dict) for item in systems):
-                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries.")
+                logger.error(
+                    f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries."
+                )
                 return ()
             return tuple(systems)
     except FileNotFoundError:
         logger.error(f"Personality file not found: {PERSONALITY_FILE_PATH}")
         return ()
     except (ujson.JSONDecodeError, KeyError) as e:
-        logger.error(f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}")
+        logger.error(
+            f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}"
+        )
         return ()
     except Exception as e:
         logger.error(f"Unexpected error reading personalities: {e}")
         return ()
+
 
 async def get_personalties() -> PersonalitiesTuple:
     """
@@ -378,21 +398,28 @@ async def get_personalties() -> PersonalitiesTuple:
             data = ujson.loads(content)
             systems = data.get("systems", [])
             if not isinstance(systems, list):
-                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list.")
+                logger.error(
+                    f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list."
+                )
                 return ()
             if not all(isinstance(item, dict) for item in systems):
-                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries.")
+                logger.error(
+                    f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries."
+                )
                 return ()
             return tuple(systems)
     except FileNotFoundError:
         logger.error(f"Personality file not found: {PERSONALITY_FILE_PATH}")
         return ()
     except (ujson.JSONDecodeError, KeyError) as e:
-        logger.error(f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}")
+        logger.error(
+            f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}"
+        )
         return ()
     except Exception as e:
         logger.error(f"Unexpected error reading personalities async: {e}")
         return ()
+
 
 async def update_personality(k: int = 6) -> PersonalitiesTuple:
     """
@@ -413,47 +440,53 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
                             or if issues occur.
     """
     global personalities
-    
+
     available_personalities = await get_personalties()
     if not available_personalities:
-        logger.warning("No personalities available from file to update the current set.")
+        logger.warning(
+            "No personalities available from file to update the current set."
+        )
         if personalities is None:
-             personalities = ()
+            personalities = ()
         return personalities
 
     if personalities is None or not personalities:
         num_to_sample = min(k, len(available_personalities))
         if num_to_sample == 0 and len(available_personalities) > 0:
             personalities = (random.choice(available_personalities),)
-        elif num_to_sample > 0 :
+        elif num_to_sample > 0:
             personalities = tuple(random.sample(available_personalities, num_to_sample))
         else:
             personalities = ()
     else:
         current_list = list(personalities)
-        
+
         new_selection = current_list[1:]
-        
-        if k > 0 :
-            choices_for_new = [p for p in available_personalities if p not in new_selection]
+
+        if k > 0:
+            choices_for_new = [
+                p for p in available_personalities if p not in new_selection
+            ]
             if not choices_for_new:
                 choices_for_new = available_personalities
-            
+
             if choices_for_new:
-                 new_random_personality = random.choice(choices_for_new)
-                 if len(new_selection) < k:
+                new_random_personality = random.choice(choices_for_new)
+                if len(new_selection) < k:
                     new_selection.append(new_random_personality)
-                 elif not new_selection and k==1:
+                elif not new_selection and k == 1:
                     new_selection = [new_random_personality]
 
         personalities = tuple(new_selection)
 
     if personalities:
-        first_personality_name = personalities[0].get('user_name', 'Unknown')
-        logger.info(f"Updated personalities. Current primary: {first_personality_name}. Count: {len(personalities)}")
+        first_personality_name = personalities[0].get("user_name", "Unknown")
+        logger.info(
+            f"Updated personalities. Current primary: {first_personality_name}. Count: {len(personalities)}"
+        )
     else:
         logger.info("Personalities list is empty after update attempt.")
-    
+
     return personalities
 
 
@@ -473,6 +506,7 @@ async def update_personality_wrapper(ttl: int = 3600) -> None:
         await update_personality()
         await sleep(ttl)
 
+
 async def get_personality() -> PersonalitiesTuple:
     """
     Retrieves the current set of active personalities.
@@ -488,7 +522,7 @@ async def get_personality() -> PersonalitiesTuple:
     if personalities is None:
         logger.info("Personalities not yet loaded, initializing...")
         await update_personality()
-    
+
     return personalities if personalities is not None else ()
 
 
@@ -502,7 +536,7 @@ async def start_personality() -> None:
     the personalities using `update_personality_wrapper`.
     """
     await get_personality()
-    
+
     asyncio.create_task(update_personality_wrapper())
     logger.info("Personality update wrapper task started.")
     return

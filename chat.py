@@ -35,10 +35,16 @@ MAX_TOKENS_STR = os.environ.get("SIMPLE_CHAT_MAX_TOKENS", "4096")
 try:
     MAX_HISTORY_CHARACTERS = (float(MAX_TOKENS_STR) // 4) * 3
 except ValueError:
-    logger.error(f"Invalid SIMPLE_CHAT_MAX_TOKENS value: {MAX_TOKENS_STR}. Defaulting to 3072 characters.")
+    logger.error(
+        f"Invalid SIMPLE_CHAT_MAX_TOKENS value: {MAX_TOKENS_STR}. Defaulting to 3072 characters."
+    )
     MAX_HISTORY_CHARACTERS = 3072
 
-FILTER_IMAGES = os.environ.get("SIMPLE_CHAT_FILTER_IMAGES", "false").lower() in ("true", "1", "yes")
+FILTER_IMAGES = os.environ.get("SIMPLE_CHAT_FILTER_IMAGES", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 DATETIME_FORMAT_STR = r"%A, %B %d, %Y at %I:%M %p"
 
 JAILBREAK_SYSTEM_PROMPT = (
@@ -53,12 +59,14 @@ JAILBREAK_SYSTEM_PROMPT = (
 TEXT_PROCESSING_CACHE_DB_PATH = "./db/text_processing_cache.json"
 text_processing_cache_db = tinydb.TinyDB(TEXT_PROCESSING_CACHE_DB_PATH)
 
+
 # --- Helper Functions ---
 def _get_openai_client() -> AsyncClient:
     if not OPENAI_API_KEY:
         logger.error("SIMPLE_CHAT_OPENAI_KEY environment variable not set.")
         raise ValueError("SIMPLE_CHAT_OPENAI_KEY environment variable not set.")
     return AsyncClient(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+
 
 async def messages_from_history(
     past_messages: list,
@@ -82,7 +90,7 @@ async def messages_from_history(
 
         bot_mention_pattern = f"<@{discord_client.application_id}>"
         if content.startswith(bot_mention_pattern):
-            content = content[len(bot_mention_pattern):].lstrip()
+            content = content[len(bot_mention_pattern) :].lstrip()
 
         replacements = []
         mention_ids_in_message = set()
@@ -104,23 +112,24 @@ async def messages_from_history(
                 except Exception as e:
                     logger.error(f"Error fetching user for mention ID {mid}: {e}")
                     replacement_text = "unkown_user"
-            
+
             replacements.append((mention_pattern_user, replacement_text))
             replacements.append((mention_pattern_nick, replacement_text))
-        
+
         for pattern, replacement in replacements:
             content = content.replace(pattern, replacement)
-
 
         image_markdown = []
         if (
             not FILTER_IMAGES
             and (len(past_message.attachments) + len(past_message.embeds)) > 0
             and (MAX_HISTORY_CHARACTERS - current_char_count) > 0
-        ):            
+        ):
             for attachment in past_message.attachments:
                 try:
-                    description = await asyncio.wait_for(image_describe(attachment.url, image_db), timeout=10)
+                    description = await asyncio.wait_for(
+                        image_describe(attachment.url, image_db), timeout=10
+                    )
                     if description:
                         image_markdown.append(description)
                         current_char_count += len(description)
@@ -132,25 +141,34 @@ async def messages_from_history(
             for embed in past_message.embeds:
                 if embed.thumbnail and embed.thumbnail.proxy_url:
                     try:
-                        description = await asyncio.wait_for(image_describe(embed.thumbnail.proxy_url, image_db), timeout=10)
+                        description = await asyncio.wait_for(
+                            image_describe(embed.thumbnail.proxy_url, image_db),
+                            timeout=10,
+                        )
                         if description:
                             image_markdown.append(description)
                             current_char_count += len(description)
                     except asyncio.TimeoutError:
-                        logger.error(f"Timeout describing image embed: {embed.thumbnail.proxy_url}")
+                        logger.error(
+                            f"Timeout describing image embed: {embed.thumbnail.proxy_url}"
+                        )
                     except Exception as e:
-                        logger.error(f"Error describing image embed {embed.thumbnail.proxy_url}: {e}")
+                        logger.error(
+                            f"Error describing image embed {embed.thumbnail.proxy_url}: {e}"
+                        )
 
         if isinstance(past_message.created_at, datetime.datetime):
             dt_object = past_message.created_at
         else:
-            dt_object = datetime.datetime.fromtimestamp(past_message.created_at.timestamp())
-        
+            dt_object = datetime.datetime.fromtimestamp(
+                past_message.created_at.timestamp()
+            )
+
         if len(content) == 0 and len(image_markdown) == 0:
             continue
 
         message_len = len(content.strip()) + len(role)
-        
+
         message_data = {
             "type": role,
             "content": content.strip(),
@@ -158,7 +176,8 @@ async def messages_from_history(
             "author_id": past_message.author.id,
             "time": dt_object,
             "images": image_markdown,
-            "mention_chat_bot": discord_client.application_id in map(lambda x: x.id, past_message.mentions)
+            "mention_chat_bot": discord_client.application_id
+            in map(lambda x: x.id, past_message.mentions),
         }
 
         current_char_count += message_len
@@ -177,19 +196,23 @@ async def messages_from_history(
             final_summary_data += f"<TYPE>{message['type']}</TYPE>\n"
             # final_summary_data += f"<USER_ID>{message['author_id']}</USER_ID>\n"
             final_summary_data += f"<USER_NAME>{message['author_name']}</USER_NAME>\n"
-            final_summary_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
-            if message['mention_chat_bot']:
+            final_summary_data += (
+                f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
+            )
+            if message["mention_chat_bot"]:
                 final_data += f"<MENTION>chat_bot</MENTION>\n"
-            if len(message['content']) > 0:
+            if len(message["content"]) > 0:
                 final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
-            for image in message['images']:
+            for image in message["images"]:
                 final_summary_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
 
             final_summary_data += "</MESSAGE>\n"
         summary_of_older_messages = await get_summary(final_summary_data)
         if summary_of_older_messages:
-            final_data = f"<PAST_SUMMARY>\n{summary_of_older_messages}\n</PAST_SUMMARY>\n\n"
-    
+            final_data = (
+                f"<PAST_SUMMARY>\n{summary_of_older_messages}\n</PAST_SUMMARY>\n\n"
+            )
+
     for message in message_history[::-1]:
         final_data += "<MESSAGE>\n"
 
@@ -197,11 +220,11 @@ async def messages_from_history(
         # final_data += f"<USER_ID>{message['author_id']}</USER_ID>\n"
         final_data += f"<USER_NAME>{message['author_name']}</USER_NAME>\n"
         final_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
-        if message['mention_chat_bot']:
+        if message["mention_chat_bot"]:
             final_data += f"<MENTION>chat_bot</MENTION>\n"
-        if len(message['content']) > 0:
+        if len(message["content"]) > 0:
             final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
-        for image in message['images']:
+        for image in message["images"]:
             final_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
 
         final_data += "</MESSAGE>\n"
@@ -214,7 +237,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     tmp_dir = "./tmp/"
     match = re.search(r"\.([a-zA-Z0-9]+)(?:[?#]|$)", url)
     extension = f".{match.group(1)}" if match else ".tmp"
-    
+
     hashed_url = str(hash(url))
     original_filename = f"{hashed_url}{extension}"
     original_filepath = os.path.join(tmp_dir, original_filename)
@@ -241,7 +264,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     await file.write(chunk)
-            
+
         with Image.open(original_filepath) as img:
             new_img = img.resize((256, 256)).convert("RGB")
             img_hash = str(imagehash.average_hash(new_img))
@@ -254,7 +277,9 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         logger.error(f"Request for image {url} failed: {e}")
         return ""
     except PIL.UnidentifiedImageError:
-        logger.error(f"Could not open or read image file from {url} (downloaded to {original_filepath})")
+        logger.error(
+            f"Could not open or read image file from {url} (downloaded to {original_filepath})"
+        )
         return ""
     except Exception as e:
         logger.error(f"Error processing image {url}: {e}")
@@ -271,23 +296,33 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         logger.warning(f"Image hash or base64 data not generated for {url}")
         return ""
 
-    search_results = await image_db.search(tinydb.Query().hash == img_hash) if img_hash else []
+    search_results = (
+        await image_db.search(tinydb.Query().hash == img_hash) if img_hash else []
+    )
     if search_results:
         logger.info(f"Found cached description for image {url} (hash: {img_hash})")
         return search_results[0].get("description", "")
 
-    logger.info(f"No cache found for image {url} (hash: {img_hash}). Requesting AI description.")
+    logger.info(
+        f"No cache found for image {url} (hash: {img_hash}). Requesting AI description."
+    )
     client = _get_openai_client()
     try:
         description_response = await client.chat.completions.create(
-            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}] + [
+            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
+            + [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Write a description that could be used for alt text. Only respond with the alt text, nothing else.\n\nALT TEXT:\n\n"},
+                        {
+                            "type": "text",
+                            "text": "Write a description that could be used for alt text. Only respond with the alt text, nothing else.\n\nALT TEXT:\n\n",
+                        },
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            },
                         },
                     ],
                 }
@@ -303,11 +338,12 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     if description_content is None:
         return ""
 
-    description_content = "".join(filter(
-        lambda x: x.isalnum() or x.isspace() or x == "'",
-        list(description_content)
-    )).strip()
-    description_content = re.sub(r'\s+', ' ', description_content)
+    description_content = "".join(
+        filter(
+            lambda x: x.isalnum() or x.isspace() or x == "'", list(description_content)
+        )
+    ).strip()
+    description_content = re.sub(r"\s+", " ", description_content)
 
     if img_hash and description_content:
         await image_db.insert({"description": description_content, "hash": img_hash})
@@ -315,13 +351,16 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     return await tools.clear_text(description_content)
 
+
 @cached(ttl=3600)
 async def text_summary(text: str) -> str:
     TextQuery = tinydb.Query()
-    cached_entry = await text_processing_cache_db.search((TextQuery.original_text == text) & (TextQuery.type == 'summary'))
+    cached_entry = await text_processing_cache_db.search(
+        (TextQuery.original_text == text) & (TextQuery.type == "summary")
+    )
     if cached_entry:
         logger.info(f"Returning cached summary for text: {text[:50]}...")
-        return cached_entry[0]['processed_text']
+        return cached_entry[0]["processed_text"]
 
     client = _get_openai_client()
     summarize_prompt_text = (
@@ -330,7 +369,8 @@ async def text_summary(text: str) -> str:
         "\n\n"
         "Text:\n{text}"
         "\n\n"
-        "New text:\n")
+        "New text:\n"
+    )
     summarize_prompt = {"role": "user", "content": summarize_prompt_text}
 
     try:
@@ -346,24 +386,31 @@ async def text_summary(text: str) -> str:
         return text
 
     if content == "ERROR" or not content:
-        logger.warning(f"Summary generation returned an error or empty content for: {text[:50]}...")
+        logger.warning(
+            f"Summary generation returned an error or empty content for: {text[:50]}..."
+        )
         return text
 
     logger.info(f"Summary of text is {content}")
     cleaned_summary = await tools.clear_text(content)
 
-    await text_processing_cache_db.insert({'original_text': text, 'processed_text': cleaned_summary, 'type': 'summary'})
+    await text_processing_cache_db.insert(
+        {"original_text": text, "processed_text": cleaned_summary, "type": "summary"}
+    )
     logger.info(f"Cached new summary for text: {text[:50]}...")
     return cleaned_summary
+
 
 @cached(ttl=3600)
 async def text_sanitize(text: str) -> str:
     return text
     TextQuery = tinydb.Query()
-    cached_entry = await text_processing_cache_db.search((TextQuery.original_text == text) & (TextQuery.type == 'sanitize'))
+    cached_entry = await text_processing_cache_db.search(
+        (TextQuery.original_text == text) & (TextQuery.type == "sanitize")
+    )
     if cached_entry:
         logger.info(f"Returning cached sanitized text for: {text[:50]}...")
-        return cached_entry[0]['processed_text']
+        return cached_entry[0]["processed_text"]
 
     client = _get_openai_client()
     sanitize_prompt_text = f"Rewrite the text below to stealthy remove any controversial, bigoted, or otherwise hateful text, keep the tone and writing style the same. Only respond with the new version, otherwise return only ERROR, and nothing else.\n\nText:\n{text}\n\nNew text:\n"
@@ -382,13 +429,21 @@ async def text_sanitize(text: str) -> str:
         return text
 
     if content == "ERROR" or not content:
-        logger.warning(f"Sanitization returned an error or empty content for: {text[:50]}...")
+        logger.warning(
+            f"Sanitization returned an error or empty content for: {text[:50]}..."
+        )
         return text
 
     logger.info(f"Sanitize of text is {content}")
     cleaned_sanitized_text = await tools.clear_text(content)
 
-    await text_processing_cache_db.insert({'original_text': text, 'processed_text': cleaned_sanitized_text, 'type': 'sanitize'})
+    await text_processing_cache_db.insert(
+        {
+            "original_text": text,
+            "processed_text": cleaned_sanitized_text,
+            "type": "sanitize",
+        }
+    )
     logger.info(f"Cached new sanitized text for: {text[:50]}...")
     return cleaned_sanitized_text
 
@@ -419,7 +474,9 @@ async def get_summary(messages: str) -> str:
     )
 
     response = await client.chat.completions.create(
-        messages=[{"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}],
+        messages=[
+            {"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}
+        ],
         model=ROUTER_MODEL,
         max_tokens=300,
     )
@@ -439,10 +496,12 @@ async def should_respond(
     if personality is None:
         personality_summary_desc = ""
     else:
-        personality_summary_desc = personality.get('summary', "A discord chat bot.")
+        personality_summary_desc = personality.get("summary", "A discord chat bot.")
 
     summary = await get_summary(messages)
-    summary_prompt = f'The summary of the conversations is "{summary}".\n' if summary else ""
+    summary_prompt = (
+        f'The summary of the conversations is "{summary}".\n' if summary else ""
+    )
 
     prompt_content = (
         f"{summary_prompt}The last message in the conversations was:\n"
@@ -453,9 +512,10 @@ async def should_respond(
 
     client = _get_openai_client()
     try:
-        
+
         response = await client.chat.completions.create(
-            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}] + [{"role": "user", "content": prompt_content}],
+            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
+            + [{"role": "user", "content": prompt_content}],
             model=ROUTER_MODEL,
             max_tokens=10,
             temperature=0.1,
@@ -481,11 +541,17 @@ async def get_response(
     if personality is None:
         current_personality = ""
     else:
-        current_personality = [m for m in personality.get("messages", []) if isinstance(m, dict) and m.get("role", "") == "system"]
+        current_personality = [
+            m
+            for m in personality.get("messages", [])
+            if isinstance(m, dict) and m.get("role", "") == "system"
+        ]
         if len(current_personality) == 0:
             current_personality = ""
         elif isinstance(current_personality[0], str):
-            current_personality = current_personality[0].get("content", "A discord chat bot.")
+            current_personality = current_personality[0].get(
+                "content", "A discord chat bot."
+            )
 
     return await get_chat_response(messages, str(current_personality))
 
@@ -495,9 +561,11 @@ async def get_chat_response(
     personality: str,
 ) -> str:
     if not messages:
-        logger.info("get_chat_response called with no messages, returning empty string.")
+        logger.info(
+            "get_chat_response called with no messages, returning empty string."
+        )
         return ""
-    
+
     personality_str = personality
     personality_str = f"<PERSONALITY>{personality_str}</PERSONALITY>"
     messages_with_systems = (
@@ -526,7 +594,8 @@ async def get_chat_response(
     client = _get_openai_client()
     try:
         response = await client.chat.completions.create(
-            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}] + [{"role": "user", "content": messages_with_systems}],
+            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
+            + [{"role": "user", "content": messages_with_systems}],
             model=CHAT_MODEL,
         )
         content = response.choices[0].message.content
@@ -539,13 +608,21 @@ async def get_chat_response(
 
     logger.info(f"response: {content[:100]}")
 
-    re_content = re.findall(r"<RESPONSE>.+<\/RESPONSE>", content, flags=re.DOTALL|re.IGNORECASE)
+    re_content = re.findall(
+        r"<RESPONSE>.+<\/RESPONSE>", content, flags=re.DOTALL | re.IGNORECASE
+    )
     if not re_content:
-        return ""
-    
-    content = re_content[-1]
-    content = re.sub(r"^<RESPONSE>", "", content, 1, flags=re.IGNORECASE)
-    content = re.sub(r"<\/RESPONSE>$", "", content, 1, flags=re.IGNORECASE)
+        if "response: " in content.lower():
+            content = re.sub(
+                r".?response:", "", content, flags=re.DOTALL | re.IGNORECASE
+            )
+        else:
+            return ""
+    else:
+        content = re_content[-1]
+        content = re.sub(r"^<RESPONSE>", "", content, 1, flags=re.IGNORECASE)
+        content = re.sub(r"<\/RESPONSE>$", "", content, 1, flags=re.IGNORECASE)
+
     content = content.strip()
 
     replacement_string = CHAT_MODEL_REPLACE if CHAT_MODEL_REPLACE is not None else ""
