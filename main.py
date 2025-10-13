@@ -75,19 +75,25 @@ if __name__ == "__main__":
     @discord_client.event
     async def on_ready():
         logger.info(f"Logged in as {discord_client.user}")
-        logger.debug(f"Discord client ready. User ID: {discord_client.user.id}")
+        logger.debug(f"Discord client ready. User ID: {discord_client.user.id}")  # type: ignore
 
     @discord_client.event
     async def on_message(message: discord.Message):
         logger.debug(
-            f"[on_message START] User: {message.author.name} ({message.author.id}), Channel: {message.channel.id}, Guild: {message.guild.id if message.guild else 'DM'}. Content: \"{message.content[:60]}...\""
+            (
+                f"[on_message START] User: {message.author.name} ({message.author.id}), ",
+                f"Channel: {message.channel.id}, Guild: {message.guild.id if message.guild else 'DM'}. ",
+                f'Content: "{message.content[:60]}..."',
+            )
         )
         global profile_picture
         current_personality = (await tools.get_personality())[0]
         logger.debug(f"Current personality: {current_personality['user_name']}")
 
         pers = await tools.get_personality()  # type: ignore
-        pers: dict | None = pers[0] if isinstance(pers, tuple) and len(pers) > 0 else None  # type: ignore
+        pers: dict | None = (
+            pers[0] if isinstance(pers, tuple) and len(pers) > 0 else None
+        )  # type: ignore
 
         if (
             message.guild is not None
@@ -97,7 +103,7 @@ if __name__ == "__main__":
                 f"Attempting to update nickname to '{current_personality['user_name']}' in guild {message.guild.id}"
             )
             try:
-                await message.guild.me.edit(nick=current_personality["user_name"])
+                await message.guild.me.edit(nick=current_personality["user_name"])  # type: ignore
                 logger.info(
                     f"Successfully updated nickname in guild {message.guild.id}"
                 )
@@ -105,7 +111,7 @@ if __name__ == "__main__":
                 if profile_picture != image_path:
                     logger.info(f"Attempting to change avatar to '{image_path}'.")
                     async with aiofiles.open(image_path, "rb") as file:
-                        await discord_client.user.edit(avatar=await file.read())
+                        await discord_client.user.edit(avatar=await file.read())  # type: ignore
                         profile_picture = image_path
                         logger.info(
                             f"Successfully updated profile picture to '{image_path}'."
@@ -122,7 +128,7 @@ if __name__ == "__main__":
 
         channel_query = tinydb.Query().channel == message.channel.id
         logger.debug(f"DB: Searching for chat entry for channel {message.channel.id}")
-        chat_db_results = await chats_db.search(channel_query)
+        chat_db_results = await chats_db.search(channel_query)  # type: ignore
 
         if not chat_db_results:
             logger.info(
@@ -136,7 +142,7 @@ if __name__ == "__main__":
                     "last_scan": twelve_hours_ago,
                 }
             )
-            chat_db_entry = (await chats_db.search(channel_query))[0]
+            chat_db_entry = (await chats_db.search(channel_query))[0]  # type: ignore
         else:
             logger.debug(f"DB: Found existing entry: {chat_db_results[0]}")
             chat_db_entry = chat_db_results[0]
@@ -158,7 +164,7 @@ if __name__ == "__main__":
             logger.debug(
                 f"Message from user '{message.author.name}' (ID: {message.author.id}), not the bot itself or another bot. Proceeding with response logic."
             )
-            if discord_client.application_id in map(lambda x: x.id, message.mentions):
+            if discord_client.application_id in map(lambda x: x.id, message.mentions):  # type: ignore
                 logger.info(
                     f"RESPONSE_CONDITION: Bot mentioned in channel {message.channel.id}. respond = True."
                 )
@@ -171,7 +177,7 @@ if __name__ == "__main__":
                     logger.info(
                         f"RESPONSE_CONDITION: Scan needed for channel {message.channel.id} (last scan: {last_scan_dt})."
                     )
-                    await chats_db.update({"last_scan": str(now)}, channel_query)
+                    await chats_db.update({"last_scan": str(now)}, channel_query)  # type: ignore
                     logger.debug(
                         f"DB: Updated last_scan to {now} for channel {message.channel.id}."
                     )
@@ -181,7 +187,7 @@ if __name__ == "__main__":
                     past_messages = [m async for m in message.channel.history(limit=10)]
                     limited_message_history = await chat.messages_from_history(
                         past_messages[::-1],
-                        message.created_at.timestamp(),
+                        message.created_at.timestamp(),  # type: ignore
                         discord_client,
                         message.author.id,
                         image_db,
@@ -214,7 +220,7 @@ if __name__ == "__main__":
                     past_messages = [m async for m in message.channel.history(limit=10)]
                     limited_message_history = await chat.messages_from_history(
                         past_messages[::-1],
-                        message.created_at.timestamp(),
+                        message.created_at.timestamp(),  # type: ignore
                         discord_client,
                         message.author.id,
                         image_db,
@@ -229,7 +235,7 @@ if __name__ == "__main__":
         await chats_db.update(
             {"last_chat": str(datetime.datetime.now())},
             tinydb.Query().channel == message.channel.id,
-        )
+        )  # type: ignore
 
         logger.info(f'Responding to "{message.content}"')
 
@@ -241,7 +247,7 @@ if __name__ == "__main__":
 
         message_history = await chat.messages_from_history(
             past_messages_raw[::-1],
-            message.created_at.timestamp(),
+            message.created_at.timestamp(),  # type: ignore
             discord_client,
             message.author.id,
             image_db,

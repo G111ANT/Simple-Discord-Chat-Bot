@@ -170,8 +170,6 @@ async def messages_from_history(
         if len(content) == 0 and len(image_markdown) == 0:
             continue
 
-        message_len = len(content.strip()) + len(role)
-
         mentions_ids = list(map(lambda x: x.id, past_message.mentions))
         mentions = []
         for ids in mentions_ids:
@@ -215,78 +213,80 @@ async def messages_from_history(
             "poll": poll,
         }
 
-        current_char_count += message_len
+        current_char_count += len(str(message_data))
         if current_char_count <= MAX_HISTORY_CHARACTERS:
             message_history.append(message_data)
-        # TODO: Allow for larger summary
-        elif current_char_count > MAX_HISTORY_CHARACTERS * 2:
-            break
+        elif current_char_count > MAX_HISTORY_CHARACTERS * (
+            len(message_history_to_compress) + 1
+        ):
+            message_history_to_compress.append([])
+            message_history_to_compress[-1].append(message_data)
         else:
-            message_history_to_compress.append(message_data)
+            message_history_to_compress[-1].append(message_data)
 
     final_data = ""
 
-    if message_history_to_compress:
-        final_summary_data = ""
-        for message in message_history[::-1]:
-            final_summary_data += "<MESSAGE>\n"
+    if len(message_history_to_compress) > 0:
+        for history in message_history_to_compress:
+            final_summary_data = ""
+            for message in history[::-1]:
+                final_summary_data += "<MESSAGE>\n"
 
-            final_summary_data += f"<TYPE>{message['type']}</TYPE>\n"
-            # final_summary_data += f"<USER_ID>{message['author_id']}</USER_ID>\n"
-            final_summary_data += f"<USER_NAME>{message['author_name']}</USER_NAME>\n"
-            final_summary_data += (
-                f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
-            )
-            for mention in message["mentions"]:
-                final_data += f"<MENTION>{mention}</MENTION>\n"
-            if len(message["content"]) > 0:
-                final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
-            for image in message["images"]:
-                final_summary_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
+                final_data += message_to_xml(message)
 
-            final_summary_data += "</MESSAGE>\n"
-        summary_of_older_messages = await get_summary(final_summary_data)
-        if summary_of_older_messages:
-            final_data = (
-                f"<PAST_SUMMARY>\n{summary_of_older_messages}\n</PAST_SUMMARY>\n\n"
-            )
+                final_summary_data += "</MESSAGE>\n"
+
+            summary_of_older_messages = await get_summary(final_summary_data)
+            if summary_of_older_messages:
+                final_data += (
+                    f"<PAST_SUMMARY>\n{summary_of_older_messages}\n</PAST_SUMMARY>\n"
+                )
+        final_data += "\n"
 
     for message in message_history[::-1]:
         final_data += "<MESSAGE>\n"
 
-        final_data += f"<TYPE>{message['type']}</TYPE>\n"
-        # final_data += f"<USER_ID>{message['author_id']}</USER_ID>\n"
-        final_data += f"<USER_NAME>{message['author_name']}</USER_NAME>\n"
-        final_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
-        for mention in message["mentions"]:
-            final_data += f"<MENTION>{mention}</MENTION>\n"
-        if len(message["content"]) > 0:
-            final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
-        for image in message["images"]:
-            final_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
-
-        if message["poll"] is not None:
-            final_data += f"<POLL>\n"
-            final_data += (
-                f"    <QUESTION>{message['poll']['question']} Minutes</QUESTION>\n"
-            )
-            if "time_left" in message["poll"]:
-                final_data += f"    <TIME_LEFT>{message['poll']['time_left']} Minutes</TIME_LEFT>\n"
-            final_data += (
-                f"    <IS_DONE>{message['poll']['is_done']} Minutes</IS_DONE>\n"
-            )
-            for answer in message["poll"]["answer"]:
-                final_data += f"    <ANSWER>{answer} Minutes</ANSWER>\n"
-            final_data += f"    <TOTAL_VOTES>{message['poll']['total_votes']} Minutes</TOTAL_VOTES>\n"
-            if "victor_answer" in message["poll"]:
-                final_data += f"    <VICTOR_ANSWER>{message['poll']['victor_answer']} Minutes</VICTOR_ANSWER>\n"
-                final_data += f"    <VICTOR_VOTES>{message['poll']['victor_votes']} Minutes</VICTOR_VOTES>\n"
-
-            final_data += "</POLL>\n"
+        final_data += message_to_xml(message)
 
         final_data += "</MESSAGE>\n"
 
     return final_data.strip()
+
+
+def message_to_xml(message: dict) -> str:
+    final_data = ""
+    final_data += f"<TYPE>{message['type']}</TYPE>\n"
+    # final_data += f"<USER_ID>{message['author_id']}</USER_ID>\n"
+    final_data += f"<USER_NAME>{message['author_name']}</USER_NAME>\n"
+    final_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
+    for mention in message["mentions"]:
+        final_data += f"<MENTION>{mention}</MENTION>\n"
+    if len(message["content"]) > 0:
+        final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
+    for image in message["images"]:
+        final_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
+
+    if message["poll"] is not None:
+        final_data += "<POLL>\n"
+        final_data += (
+            f"    <QUESTION>{message['poll']['question']} Minutes</QUESTION>\n"
+        )
+        if "time_left" in message["poll"]:
+            final_data += (
+                f"    <TIME_LEFT>{message['poll']['time_left']} Minutes</TIME_LEFT>\n"
+            )
+        final_data += f"    <IS_DONE>{message['poll']['is_done']} Minutes</IS_DONE>\n"
+        for answer in message["poll"]["answer"]:
+            final_data += f"<ANSWER>{answer} Minutes</ANSWER>\n"
+        final_data += (
+            f"<TOTAL_VOTES>{message['poll']['total_votes']} Minutes</TOTAL_VOTES>\n"
+        )
+        if "victor_answer" in message["poll"]:
+            final_data += f"<VICTOR_ANSWER>{message['poll']['victor_answer']} Minutes</VICTOR_ANSWER>\n"
+            final_data += f"<VICTOR_VOTES>{message['poll']['victor_votes']} Minutes</VICTOR_VOTES>\n"
+
+        final_data += "</POLL>\n"
+    return final_data
 
 
 @cached(ttl=3600)
@@ -570,7 +570,6 @@ async def should_respond(
 
     client = _get_openai_client()
     try:
-
         response = await client.chat.completions.create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
             + [{"role": "user", "content": prompt_content}],  # type: ignore
@@ -776,17 +775,6 @@ async def get_chat_response(
 
     replacement_string = CHAT_MODEL_REPLACE if CHAT_MODEL_REPLACE is not None else ""
     processed_content = await tools.model_text_replace(ret_content, replacement_string)
-
-    # print(content)
-    # print({
-    #         "content": processed_content,
-    #         "poll": {
-    #             "answers": poll_answers,
-    #             "question": question,
-    #             "multiple": multiple,  # type: ignore
-    #         },
-    #     }
-    # )
 
     return {
         "content": processed_content,

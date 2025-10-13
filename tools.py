@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import random
-import re
 from asyncio import sleep
 
 import aiofiles
@@ -204,7 +203,6 @@ async def remove_latex(text: str) -> str:
     is_latex_segment = text_for_splitting.startswith("$")
 
     for i, segment in enumerate(parts):
-
         if is_latex_segment:
             is_display_math = "DISPLAY_MATH_MARKER" in segment
             actual_latex_content = segment.replace("DISPLAY_MATH_MARKER", "").strip()
@@ -313,7 +311,7 @@ async def clear_text(string: str) -> str:
     processed_words = []
     for word in words:
         if word and profanity.contains_profanity(word.strip("||").strip()):
-            processed_words.append(f'||{word.strip().strip("|")}||')
+            processed_words.append(f"||{word.strip().strip('|')}||")
         else:
             processed_words.append(word)
 
