@@ -181,7 +181,7 @@ async def messages_from_history(
                 except Exception as _:
                     pass
 
-        mentions = list(set(mentions))
+        mentions = sorted(set(mentions))
 
         poll: Optional[dict[str, Any]] = None
         if past_message.poll is not None:
@@ -216,6 +216,8 @@ async def messages_from_history(
         current_char_count += len(str(message_data))
         if current_char_count <= MAX_HISTORY_CHARACTERS:
             message_history.append(message_data)
+        elif current_char_count > MAX_HISTORY_CHARACTERS * 3:
+            break
         elif current_char_count > MAX_HISTORY_CHARACTERS * (
             len(message_history_to_compress) + 1
         ):
