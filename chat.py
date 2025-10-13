@@ -3,7 +3,9 @@ import base64
 import datetime
 import logging
 import os
+import random
 import re
+from typing import Any, Optional
 
 import aiofiles
 import aiofiles.os
@@ -12,11 +14,12 @@ import discord
 import imagehash
 import PIL
 import requests
-import tools
 from aiocache import cached
-from openai import AsyncClient
 from dotenv import load_dotenv
+from openai import AsyncClient
 from PIL import Image
+
+import tools
 
 # from better_profanity import profanity
 
@@ -69,7 +72,7 @@ def _get_openai_client() -> AsyncClient:
 
 
 async def messages_from_history(
-    past_messages: list,
+    past_messages: list[discord.Message],
     message_create_at: int,
     discord_client: discord.Client,
     author_id: int,
@@ -169,6 +172,38 @@ async def messages_from_history(
 
         message_len = len(content.strip()) + len(role)
 
+        mentions_ids = list(map(lambda x: x.id, past_message.mentions))
+        mentions = []
+        for ids in mentions_ids:
+            if ids == discord_client.application_id:
+                mentions.append("chat_bot")
+            else:
+                try:
+                    mentions.append(await discord_client.fetch_user(ids))
+                except Exception as _:
+                    pass
+
+        poll: Optional[dict[str, Any]] = None
+        if past_message.poll is not None:
+            message_poll: discord.Poll = past_message.poll
+            poll = {}
+            if message_poll.expires_at is not None:
+                poll["time_left"] = message_poll.expires_at.minute
+
+            poll["question"] = message_poll.question
+
+            poll["answers"] = list(map(str, message_poll.answers))
+
+            poll["total_votes"] = message_poll.total_votes
+
+            if message_poll.victor_answer is not None:
+                poll["victor_answer"] = str(message_poll.victor_answer)
+                poll["victor_votes"] = message_poll.victor_answer.vote_count
+
+            poll["is_done"] = "yes" if message_poll.is_finalised() else "no"
+
+        mentions = sorted(set(mentions))
+
         message_data = {
             "type": role,
             "content": content.strip(),
@@ -176,13 +211,16 @@ async def messages_from_history(
             "author_id": past_message.author.id,
             "time": dt_object,
             "images": image_markdown,
-            "mention_chat_bot": discord_client.application_id
-            in map(lambda x: x.id, past_message.mentions),
+            "mentions": mentions,
+            "poll": poll,
         }
 
         current_char_count += message_len
         if current_char_count <= MAX_HISTORY_CHARACTERS:
             message_history.append(message_data)
+        # TODO: Allow for larger summary
+        elif current_char_count > MAX_HISTORY_CHARACTERS * 2:
+            break
         else:
             message_history_to_compress.append(message_data)
 
@@ -199,8 +237,8 @@ async def messages_from_history(
             final_summary_data += (
                 f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
             )
-            if message["mention_chat_bot"]:
-                final_data += f"<MENTION>chat_bot</MENTION>\n"
+            for mention in message["mentions"]:
+                final_data += f"<MENTION>{mention}</MENTION>\n"
             if len(message["content"]) > 0:
                 final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
             for image in message["images"]:
@@ -220,12 +258,31 @@ async def messages_from_history(
         # final_data += f"<USER_ID>{message['author_id']}</USER_ID>\n"
         final_data += f"<USER_NAME>{message['author_name']}</USER_NAME>\n"
         final_data += f"<TIME>{message['time'].strftime(DATETIME_FORMAT_STR)}</TIME>\n"
-        if message["mention_chat_bot"]:
-            final_data += f"<MENTION>chat_bot</MENTION>\n"
+        for mention in message["mentions"]:
+            final_data += f"<MENTION>{mention}</MENTION>\n"
         if len(message["content"]) > 0:
             final_data += f"<CONTENT>\n{message['content']}\n</CONTENT>\n"
         for image in message["images"]:
             final_data += f"<IMAGE>\n{image}\n</IMAGE>\n"
+
+        if message["poll"] is not None:
+            final_data += f"<POLL>\n"
+            final_data += (
+                f"    <QUESTION>{message['poll']['question']} Minutes</QUESTION>\n"
+            )
+            if "time_left" in message["poll"]:
+                final_data += f"    <TIME_LEFT>{message['poll']['time_left']} Minutes</TIME_LEFT>\n"
+            final_data += (
+                f"    <IS_DONE>{message['poll']['is_done']} Minutes</IS_DONE>\n"
+            )
+            for answer in message["poll"]["answer"]:
+                final_data += f"    <ANSWER>{answer} Minutes</ANSWER>\n"
+            final_data += f"    <TOTAL_VOTES>{message['poll']['total_votes']} Minutes</TOTAL_VOTES>\n"
+            if "victor_answer" in message["poll"]:
+                final_data += f"    <VICTOR_ANSWER>{message['poll']['victor_answer']} Minutes</VICTOR_ANSWER>\n"
+                final_data += f"    <VICTOR_VOTES>{message['poll']['victor_votes']} Minutes</VICTOR_VOTES>\n"
+
+            final_data += "</POLL>\n"
 
         final_data += "</MESSAGE>\n"
 
@@ -297,7 +354,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         return ""
 
     search_results = (
-        await image_db.search(tinydb.Query().hash == img_hash) if img_hash else []
+        await image_db.search(tinydb.Query().hash == img_hash) if img_hash else []  # type: ignore
     )
     if search_results:
         logger.info(f"Found cached description for image {url} (hash: {img_hash})")
@@ -326,8 +383,8 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                         },
                     ],
                 }
-            ],
-            model=VISION_MODEL,
+            ],  # type: ignore
+            model=VISION_MODEL,  # type: ignore
             max_tokens=150,
         )
         description_content = description_response.choices[0].message.content
@@ -356,7 +413,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 async def text_summary(text: str) -> str:
     TextQuery = tinydb.Query()
     cached_entry = await text_processing_cache_db.search(
-        (TextQuery.original_text == text) & (TextQuery.type == "summary")
+        (TextQuery.original_text == text) & (TextQuery.type == "summary")  # type: ignore
     )
     if cached_entry:
         logger.info(f"Returning cached summary for text: {text[:50]}...")
@@ -375,8 +432,8 @@ async def text_summary(text: str) -> str:
 
     try:
         response = await client.chat.completions.create(
-            messages=[summarize_prompt],
-            model=ROUTER_MODEL,
+            messages=[summarize_prompt],  # type: ignore
+            model=ROUTER_MODEL,  # type: ignore
             max_tokens=50,
         )
         content = response.choices[0].message.content
@@ -467,6 +524,7 @@ async def get_summary(messages: str) -> str:
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
         " - **CONTENT** is the actual message\n"
         " - **IMAGE** is a list of images sent with the message\n"
+        " - **POLL** is information about any poll atached to the message"
         "you should only repond with the summary, no think, no xml tags (your response should NOT be xml), only the summary.\n"
         "```XML\n"
         f"{messages}"
@@ -477,11 +535,11 @@ async def get_summary(messages: str) -> str:
         messages=[
             {"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}
         ],
-        model=ROUTER_MODEL,
+        model=ROUTER_MODEL,  # type: ignore
         max_tokens=300,
     )
     content = response.choices[0].message.content
-    return content
+    return content  # type: ignore
 
 
 async def should_respond(
@@ -514,9 +572,9 @@ async def should_respond(
     try:
 
         response = await client.chat.completions.create(
-            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
-            + [{"role": "user", "content": prompt_content}],
-            model=ROUTER_MODEL,
+            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
+            + [{"role": "user", "content": prompt_content}],  # type: ignore
+            model=ROUTER_MODEL,  # type: ignore
             max_tokens=10,
             temperature=0.1,
         )
@@ -525,7 +583,7 @@ async def should_respond(
         logger.error(f"OpenAI API call for should_respond failed: {e}")
         return False
 
-    cleaned_content = await tools.clear_text(content)
+    cleaned_content = await tools.clear_text(content)  # type: ignore
     if "YES" in cleaned_content.upper():
         logger.info("AI determined it SHOULD respond.")
         return True
@@ -534,10 +592,11 @@ async def should_respond(
     return False
 
 
-async def get_response(
+async def send_reponse(
     messages: str,
+    message: discord.Message,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
-) -> str:
+) -> None:
     if personality is None:
         current_personality = ""
     else:
@@ -553,18 +612,70 @@ async def get_response(
                 "content", "A discord chat bot."
             )
 
-    return await get_chat_response(messages, str(current_personality))
+    to_send = await get_chat_response(messages, str(current_personality))
+
+    if "content" not in to_send:
+        asyncio.create_task(message.clear_reactions())
+        return
+
+    message_response_raw = to_send["content"]
+
+    if len(message_response_raw.strip()) == 0:
+        asyncio.create_task(message.clear_reactions())
+        return
+
+    message_response_cleaned = await tools.clear_text(message_response_raw)
+    message_response_final = await tools.remove_latex(message_response_cleaned)
+
+    message_response_split = await tools.smart_text_splitter(message_response_final)
+
+    if not message_response_split or not message_response_split[0].strip():
+        logger.info("AI response was empty after processing, not sending.")
+        asyncio.create_task(message.clear_reactions())
+        return
+
+    poll = None
+    if "poll" in to_send:
+        answers = to_send["poll"].get("answers", [])
+        question = to_send["poll"].get("question", "")
+        multiple = to_send["poll"].get("multiple", False)
+        if len(answers) > 0 and len(question) > 0:
+            poll = discord.Poll(
+                question=question,
+                duration=datetime.timedelta(minutes=2),
+                multiple=multiple,
+            )
+            for answer in answers:
+                poll.add_answer(
+                    text=answer, emoji=random.choice(list("🌑🌒🌓🌔🌕🌖🌗🌘"))
+                )
+
+    last_message_sent = await message.reply(
+        message_response_split[0].strip(),
+        mention_author=True,
+        poll=poll if len(message_response_split) == 1 else None,  # type: ignore
+    )
+
+    for i, chunk in enumerate(message_response_split[1:]):
+        if chunk.strip():
+            last_message_sent = await message.channel.send(
+                chunk.strip(),
+                reference=last_message_sent,
+                poll=poll if len(message_response_split) == i + 2 else None,  # type: ignore
+            )
+
+    return
 
 
 async def get_chat_response(
     messages: str,
     personality: str,
-) -> str:
+) -> dict:
     if not messages:
         logger.info(
             "get_chat_response called with no messages, returning empty string."
         )
-        return ""
+        return {}
 
     personality_str = personality
     personality_str = f"<PERSONALITY>{personality_str}</PERSONALITY>"
@@ -582,8 +693,20 @@ async def get_chat_response(
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
         " - **CONTENT** is the actual message\n"
         " - **IMAGE** is a list of images sent with the message\n\n"
+        " - **POLL** is information about any poll atached to the message"
         "Unless asked, do not repeat past messages"
         "The final message must be in a xml called `RESPONSE` example: `<RESPONSE>I love chess.</RESPONSE>`.\n"
+        "Optional polls can be add to a message using the following format:\n"
+        "```XML\n"
+        "<RESPONSE>Quick question.</RESPONSE>\n"
+        "<POLL>\n"
+        "   <MULTIPLE>yes</MULTIPLE> # Whether users are allowed to select more than one answer (must be yes or no).\n"
+        "   <QUESTION>What's better dogs or cats?<QUESTION>\n"
+        "   <ANSWER>dogs<ANSWER>\n"
+        "   <ANSWER>cats<ANSWER>\n"
+        "</POLL>\n"
+        "```\n"
+        "NOTE: to run a poll you must also have a `RESPONSE`, also use polls sparingly, lastly there can only be one poll.\n"
         "```XML\n"
         f"{personality_str}"
         "\n\n"
@@ -594,37 +717,82 @@ async def get_chat_response(
     client = _get_openai_client()
     try:
         response = await client.chat.completions.create(
-            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
-            + [{"role": "user", "content": messages_with_systems}],
-            model=CHAT_MODEL,
+            messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
+            + [{"role": "user", "content": messages_with_systems}],  # type: ignore
+            model=CHAT_MODEL,  # type: ignore
         )
         content = response.choices[0].message.content
     except Exception as e:
         logger.error(f"OpenAI API call for get_chat_response failed: {e}")
-        return ""
+        return {}
 
     if content is None:
-        return ""
+        return {}
 
     logger.info(f"response: {content[:100]}")
 
     re_content = re.findall(
-        r"<RESPONSE>.+<\/RESPONSE>", content, flags=re.DOTALL | re.IGNORECASE
+        r"<RESPONSE>.+?<\/RESPONSE>", content, flags=re.DOTALL | re.IGNORECASE
     )
     if not re_content:
         if "response: " in content.lower():
-            content = re.sub(
+            ret_content = re.sub(
                 r".?response:", "", content, flags=re.DOTALL | re.IGNORECASE
             )
         else:
-            return ""
+            return {}
     else:
-        content = re_content[-1]
-        content = re.sub(r"^<RESPONSE>", "", content, 1, flags=re.IGNORECASE)
-        content = re.sub(r"<\/RESPONSE>$", "", content, 1, flags=re.IGNORECASE)
+        ret_content = re_content[-1]
+        ret_content = re.sub(r"^<RESPONSE>", "", ret_content, 1, flags=re.IGNORECASE)
+        ret_content = re.sub(r"<\/RESPONSE>$", "", ret_content, 1, flags=re.IGNORECASE)
+        ret_content = ret_content.strip()
 
-    content = content.strip()
+    poll_answers = []
+    re_answers = re.findall(
+        r"<ANSWER>.+?<\/ANSWER>", content, flags=re.DOTALL | re.IGNORECASE
+    )
+
+    for poll_answer in re_answers:
+        poll_answer = re.sub(r"^<ANSWER>", "", poll_answer, 1, flags=re.IGNORECASE)
+        poll_answer = re.sub(r"<\/ANSWER>$", "", poll_answer, 1, flags=re.IGNORECASE)
+        poll_answers.append(poll_answer.strip())
+
+    multiple = False
+    re_multiple = re.findall(
+        r"<MULTIPLE>.+?<\/MULTIPLE>", content, flags=re.DOTALL | re.IGNORECASE
+    )
+    if re_multiple:
+        multiple = True if "yes" in re_multiple[-1].lower() else False
+
+    question = ""
+    re_question = re.findall(
+        r"<QUESTION>.+?<\/QUESTION>", content, flags=re.DOTALL | re.IGNORECASE
+    )
+    if re_question:
+        question = re_question[-1]
+        question = re.sub(r"^<QUESTION>", "", question, 1, flags=re.IGNORECASE)
+        question = re.sub(r"<\/QUESTION>$", "", question, 1, flags=re.IGNORECASE)
+        question = question.strip()
 
     replacement_string = CHAT_MODEL_REPLACE if CHAT_MODEL_REPLACE is not None else ""
-    processed_content = await tools.model_text_replace(content, replacement_string)
-    return processed_content
+    processed_content = await tools.model_text_replace(ret_content, replacement_string)
+
+    # print(content)
+    # print({
+    #         "content": processed_content,
+    #         "poll": {
+    #             "answers": poll_answers,
+    #             "question": question,
+    #             "multiple": multiple,  # type: ignore
+    #         },
+    #     }
+    # )
+
+    return {
+        "content": processed_content,
+        "poll": {
+            "answers": poll_answers,
+            "question": question,
+            "multiple": multiple,  # type: ignore
+        },
+    }

@@ -2,18 +2,21 @@ import asyncio
 import datetime
 import logging
 import os
+
 import certifi
-import os
 
 os.environ["SSL_CERT_FILE"] = certifi.where()
 
+import random
+
 import aiofiles
 import asynctinydb as tinydb
-import chat
 import discord
-import tools
 from discord.ext import commands
 from dotenv import load_dotenv
+
+import chat
+import tools
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +233,10 @@ if __name__ == "__main__":
 
         logger.info(f'Responding to "{message.content}"')
 
+        asyncio.create_task(
+            message.add_reaction(random.choice(list("🌑🌒🌓🌔🌕🌖🌗🌘")))
+        )
+
         past_messages_raw = [m async for m in message.channel.history()]
 
         message_history = await chat.messages_from_history(
@@ -248,28 +255,7 @@ if __name__ == "__main__":
             f'Sent "{message_history[:100]}..." (newest) to the AI from history of {len(message_history)}'
         )
 
-        message_response_raw = await chat.get_response(message_history, pers)
-        if len(message_response_raw.strip()) == 0:
-            return
-        message_response_cleaned = await tools.clear_text(message_response_raw)
-        message_response_final = await tools.remove_latex(message_response_cleaned)
-
-        message_response_split = await tools.smart_text_splitter(message_response_final)
-
-        if not message_response_split or not message_response_split[0].strip():
-            logger.info("AI response was empty after processing, not sending.")
-            return
-
-        reply_message = await message.reply(
-            message_response_split[0].strip(), mention_author=True
-        )
-
-        last_message_sent = reply_message
-        for chunk in message_response_split[1:]:
-            if chunk.strip():
-                last_message_sent = await message.channel.send(
-                    chunk.strip(), reference=last_message_sent
-                )
+        await chat.send_reponse(message_history, message, pers)
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])
