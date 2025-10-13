@@ -177,9 +177,11 @@ async def messages_from_history(
                 mentions.append("chat_bot")
             else:
                 try:
-                    mentions.append(await discord_client.fetch_user(ids))
+                    mentions.append((await discord_client.fetch_user(ids)).display_name)
                 except Exception as _:
                     pass
+
+        mentions = list(set(mentions))
 
         poll: Optional[dict[str, Any]] = None
         if past_message.poll is not None:
@@ -199,8 +201,6 @@ async def messages_from_history(
                 poll["victor_votes"] = message_poll.victor_answer.vote_count
 
             poll["is_done"] = "yes" if message_poll.is_finalised() else "no"
-
-        mentions = sorted(set(mentions))
 
         message_data = {
             "type": role,
