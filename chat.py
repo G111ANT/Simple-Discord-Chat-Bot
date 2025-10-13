@@ -634,20 +634,20 @@ async def send_reponse(
         return
 
     poll = None
-    if "poll" in to_send:
-        answers = to_send["poll"].get("answers", [])
-        question = to_send["poll"].get("question", "")
-        multiple = to_send["poll"].get("multiple", False)
-        if len(answers) > 0 and len(question) > 0:
-            poll = discord.Poll(
-                question=question,
-                duration=datetime.timedelta(minutes=2),
-                multiple=multiple,
-            )
-            for answer in answers:
-                poll.add_answer(
-                    text=answer, emoji=random.choice(list("🌑🌒🌓🌔🌕🌖🌗🌘"))
-                )
+    # if "poll" in to_send:
+    #     answers = to_send["poll"].get("answers", [])
+    #     question = to_send["poll"].get("question", "")
+    #     multiple = to_send["poll"].get("multiple", False)
+    #     if len(answers) > 0 and len(question) > 0:
+    #         poll = discord.Poll(
+    #             question=question,
+    #             duration=datetime.timedelta(minutes=2),
+    #             multiple=multiple,
+    #         )
+    #         for answer in answers:
+    #             poll.add_answer(
+    #                 text=answer, emoji=random.choice(list("🌑🌒🌓🌔🌕🌖🌗🌘"))
+    #             )
 
     last_message_sent = await message.reply(
         message_response_split[0].strip(),
