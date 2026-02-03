@@ -128,24 +128,33 @@ if __name__ == "__main__":
 
         channel_query = tinydb.Query().channel == message.channel.id
         logger.debug(f"DB: Searching for chat entry for channel {message.channel.id}")
-        chat_db_results = await chats_db.search(channel_query)  # type: ignore
 
-        if not chat_db_results:
-            logger.info(
-                f"DB: No chat entry for channel {message.channel.id}. Creating new one."
-            )
-            twelve_hours_ago = str(now - datetime.timedelta(hours=12))
-            await chats_db.insert(
-                {
-                    "channel": message.channel.id,
-                    "last_chat": twelve_hours_ago,
-                    "last_scan": twelve_hours_ago,
-                }
-            )
-            chat_db_entry = (await chats_db.search(channel_query))[0]  # type: ignore
-        else:
-            logger.debug(f"DB: Found existing entry: {chat_db_results[0]}")
-            chat_db_entry = chat_db_results[0]
+        try:
+            chat_db_results = await chats_db.search(channel_query)  # type: ignore
+
+            if not chat_db_results:
+                logger.info(
+                    f"DB: No chat entry for channel {message.channel.id}. Creating new one."
+                )
+                twelve_hours_ago = str(now - datetime.timedelta(hours=12))
+                await chats_db.insert(
+                    {
+                        "channel": message.channel.id,
+                        "last_chat": twelve_hours_ago,
+                        "last_scan": twelve_hours_ago,
+                    }
+                )
+                chat_db_entry = (await chats_db.search(channel_query))[0]  # type: ignore
+            else:
+                logger.debug(f"DB: Found existing entry: {chat_db_results[0]}")
+                chat_db_entry = chat_db_results[0]
+        except Exception as e:
+            logger.error(f"{e}")
+            chat_db_entry = {
+                "channel": message.channel.id,
+                "last_chat": twelve_hours_ago,
+                 "last_scan": twelve_hours_ago,
+            }
 
         last_scan_dt = datetime.datetime.strptime(
             chat_db_entry["last_scan"], "%Y-%m-%d %H:%M:%S.%f"
