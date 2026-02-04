@@ -87,10 +87,22 @@ if __name__ == "__main__":
             )
         )
         global profile_picture
-        current_personality = (await tools.get_personality())[0]
+        personailties = await tools.get_personality()
+        if len(personailties) == 0:
+            personailties = (
+                {
+                    "user_name": "simple chat",
+                    "messages": [],
+                    "summary": "A helpful and fun chat bot!",
+                    "image": "./config/images/default.png"
+                },
+            )
+            logger.error("Personailties not loaded")
+
+        current_personality = personailties[0]
         logger.debug(f"Current personality: {current_personality['user_name']}")
 
-        pers_raw = await tools.get_personality()  # type: ignore
+        pers_raw = personailties  # type: ignore
         pers: dict | None = (
             pers_raw[0] if isinstance(pers_raw, tuple) and len(pers_raw) > 0 else None
         )  # type: ignore
