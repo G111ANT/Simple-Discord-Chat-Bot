@@ -7,7 +7,7 @@ import tempfile
 import aiofiles
 import flatlatex
 import ujson
-import profanity_check
+import glin_profanity
 
 logger = logging.getLogger(__name__)
 
@@ -310,8 +310,9 @@ async def clear_text(string: str) -> str:
 
     words = string.split(" ")
     processed_words: list[str] = []
+    prof_filter = glin_profanity.Filter({"detect_leetspeak": True})
     for word in words:
-        if word and profanity_check.predict(word.strip("|").strip()):
+        if word and prof_filter.is_profane(word.strip("|").strip()):
             processed_words.append(f"||{word.strip("|").strip()}||")
         else:
             processed_words.append(word)
