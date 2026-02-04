@@ -2,11 +2,12 @@ import asyncio
 import logging
 import random
 from asyncio import sleep
+import tempfile
 
 import aiofiles
 import flatlatex
 import ujson
-from better_profanity import profanity
+import profanity_check
 
 logger = logging.getLogger(__name__)
 
@@ -308,10 +309,10 @@ async def clear_text(string: str) -> str:
     logger.info(f"Cleaning text. Input snippet: {string[:100]}...")
 
     words = string.split(" ")
-    processed_words = []
+    processed_words: list[str] = []
     for word in words:
-        if word and profanity.contains_profanity(word.strip("||").strip()):
-            processed_words.append(f"||{word.strip().strip('|')}||")
+        if word and profanity_check.predict(word.strip("|").strip()):
+            processed_words.append(f"||{word.strip("|").strip()}||")
         else:
             processed_words.append(word)
 
@@ -485,6 +486,12 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
     else:
         logger.info("Personalities list is empty after update attempt.")
 
+    try:
+        async with aiofiles.open(tempfile.gettempdir() + "/current_p.json", "w", encoding="utf-8") as file:
+            ujson.dump(personalities, file)
+    except Exception as e:
+        print(f"update_personality: {e}")
+
     return personalities
 
 
@@ -517,9 +524,12 @@ async def get_personality() -> PersonalitiesTuple:
                             Returns an empty tuple if loading failed or none are set.
     """
     global personalities
-    if personalities is None:
-        logger.info("Personalities not yet loaded, initializing...")
-        await update_personality()
+
+    try:
+        async with aiofiles.open(tempfile.gettempdir() + "/current_p.json", "r", encoding="utf-8") as file:
+            personalities = ujson.loads(await file.read())
+    except Exception as e:
+        print(f"update_personality: {e}")
 
     return personalities if personalities is not None else ()
 

@@ -90,9 +90,9 @@ if __name__ == "__main__":
         current_personality = (await tools.get_personality())[0]
         logger.debug(f"Current personality: {current_personality['user_name']}")
 
-        pers = await tools.get_personality()  # type: ignore
+        pers_raw = await tools.get_personality()  # type: ignore
         pers: dict | None = (
-            pers[0] if isinstance(pers, tuple) and len(pers) > 0 else None
+            pers_raw[0] if isinstance(pers_raw, tuple) and len(pers_raw) > 0 else None
         )  # type: ignore
 
         if (
@@ -153,7 +153,7 @@ if __name__ == "__main__":
             chat_db_entry = {
                 "channel": message.channel.id,
                 "last_chat": twelve_hours_ago,
-                 "last_scan": twelve_hours_ago,
+                "last_scan": twelve_hours_ago,
             }
 
         last_scan_dt = datetime.datetime.strptime(
@@ -270,7 +270,7 @@ if __name__ == "__main__":
             f'Sent "{message_history[:100]}..." (newest) to the AI from history of {len(message_history)}'
         )
 
-        await chat.send_reponse(message_history, message, pers)
+        await chat.send_response(message_history, message, pers) # type: ignore
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])

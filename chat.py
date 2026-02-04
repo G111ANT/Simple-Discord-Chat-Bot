@@ -114,7 +114,7 @@ async def messages_from_history(
                     replacement_text = "deleted_user"
                 except Exception as e:
                     logger.error(f"Error fetching user for mention ID {mid}: {e}")
-                    replacement_text = "unkown_user"
+                    replacement_text = "unknown_user"
 
             replacements.append((mention_pattern_user, replacement_text))
             replacements.append((mention_pattern_nick, replacement_text))
@@ -526,8 +526,8 @@ async def get_summary(messages: str) -> str:
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
         " - **CONTENT** is the actual message\n"
         " - **IMAGE** is a list of images sent with the message\n"
-        " - **POLL** is information about any poll atached to the message"
-        "you should only repond with the summary, no think, no xml tags (your response should NOT be xml), only the summary.\n"
+        " - **POLL** is information about any poll attached to the message"
+        "you should only respond with the summary, no think, no xml tags (your response should NOT be xml), only the summary.\n"
         "```XML\n"
         f"{messages}"
         "\n```"
@@ -593,7 +593,7 @@ async def should_respond(
     return False
 
 
-async def send_reponse(
+async def send_response(
     messages: str,
     message: discord.Message,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
@@ -682,7 +682,7 @@ async def get_chat_response(
     personality_str = f"<PERSONALITY>{personality_str}</PERSONALITY>"
     messages_with_systems = (
         "You are a chat bot for a social media platform"
-        "Your job is to repsond to the messages they way a bot with the personality in the **PERSONALITY** tags would."
+        "Your job is to respond to the messages they way a bot with the personality in the **PERSONALITY** tags would."
         "When you see `chat_bot` that is you."
         # "You can mention people by `<@user_id>`, where user id is there id, (so if there id is `10`, then the mention would look like `<@10>`)."
         "The messages are in xml format,\n"
@@ -694,7 +694,7 @@ async def get_chat_response(
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
         " - **CONTENT** is the actual message\n"
         " - **IMAGE** is a list of images sent with the message\n\n"
-        " - **POLL** is information about any poll atached to the message"
+        " - **POLL** is information about any poll attached to the message"
         "Unless asked, do not repeat past messages"
         "The final message must be in a xml called `RESPONSE` example: `<RESPONSE>I love chess.</RESPONSE>`.\n"
         "Optional polls can be add to a message using the following format:\n"
