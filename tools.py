@@ -489,7 +489,7 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
 
     try:
         async with aiofiles.open(tempfile.gettempdir() + "/current_p.json", "w", encoding="utf-8") as file:
-            ujson.dump(personalities, file)
+            await file.write(ujson.encode(personalities))
     except Exception as e:
         logger.error(f"update_personality: {e}")
 
