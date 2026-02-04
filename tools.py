@@ -526,7 +526,7 @@ async def get_personality() -> PersonalitiesTuple:
     """
     global personalities
     if personalities is None:
-        update_personality()
+        await update_personality()
 
     try:
         async with aiofiles.open(tempfile.gettempdir() + "/current_p.json", "r", encoding="utf-8") as file:
