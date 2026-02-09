@@ -55,6 +55,11 @@ if __name__ == "__main__":
 
     tinydb.Modifier.Conversion.ExtendedJSON(image_db)
 
+    logger.info("Loading personality db")
+    personality_db = tinydb.TinyDB("./db/personality.json", access_mode="rb+")
+
+    tinydb.Modifier.Conversion.ExtendedJSON(image_db)
+
     discord_intents = discord.Intents.all()
     discord_intents.message_content = True
     discord_intents.messages = True
@@ -98,8 +103,8 @@ if __name__ == "__main__":
                 },
             )
             logger.error("Personailties not loaded")
-
         current_personality = personailties[0]
+        personality_name = current_personality["user_name"]
         logger.debug(f"Current personality: {current_personality['user_name']}")
 
         pers_raw = personailties  # type: ignore
@@ -212,6 +217,8 @@ if __name__ == "__main__":
                         discord_client,
                         message.author.id,
                         image_db,
+                        personality_name,
+                        personality_db
                     )
                     logger.debug(
                         f"AI_CALL: chat.should_respond for scan (history len: {len(limited_message_history)})."
@@ -245,6 +252,8 @@ if __name__ == "__main__":
                         discord_client,
                         message.author.id,
                         image_db,
+                        personality_name,
+                        personality_db
                     )
                     respond = await chat.should_respond(
                         limited_message_history, past_messages[0].content, pers
@@ -272,6 +281,8 @@ if __name__ == "__main__":
             discord_client,
             message.author.id,
             image_db,
+            personality_name,
+            personality_db
         )
 
         if not message_history:
@@ -282,7 +293,11 @@ if __name__ == "__main__":
             f'Sent "{message_history[:100]}..." (newest) to the AI from history of {len(message_history)}'
         )
 
-        await chat.send_response(message_history, message, pers) # type: ignore
+        message_ids: list[int] = await chat.send_response(message_history, message, pers) # type: ignore
+
+        for message_id in message_ids:
+            await personality_db.insert({"name": personality_name, "id": message_id})
+            logging.info(f"Adding {message_id}: {personality_name} to personality db")
 
     logger.info("Starting discord bot")
     discord_client.run(os.environ["SIMPLE_CHAT_DISCORD_API_KEY"])

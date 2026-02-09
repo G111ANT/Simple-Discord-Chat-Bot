@@ -77,15 +77,24 @@ async def messages_from_history(
     discord_client: discord.Client,
     author_id: int,
     image_db: tinydb.TinyDB,
+    personality_name: str,
+    personality_db: tinydb.TinyDB,
 ) -> str:
     message_history = []
     message_history_to_compress = []
     current_char_count = 0
 
     for past_message in past_messages[::-1]:
+        author_name = past_message.author.display_name[0],
         role = "user"
         if past_message.author.id == discord_client.application_id:
-            role = "chat_bot"
+            search_results = await personality_db.search(tinydb.Query().id == past_message.id)
+            if search_results and search_results[0].get("name", "bot") != personality_name:
+                role = "other_bot"
+                author_name = search_results[0].get("name", "bot")
+            else:
+                role = "chat_bot"
+                author_name = personality_name
         elif past_message.author.bot:
             role = "other_bot"
 
@@ -205,7 +214,7 @@ async def messages_from_history(
         message_data = {
             "type": role,
             "content": content.strip(),
-            "author_name": past_message.author.display_name,
+            "author_name": author_name,
             "author_id": past_message.author.id,
             "time": dt_object,
             "images": image_markdown,
@@ -597,7 +606,7 @@ async def send_response(
     messages: str,
     message: discord.Message,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
-) -> None:
+) -> list[int]:
     if personality is None:
         current_personality = ""
     else:
@@ -651,11 +660,13 @@ async def send_response(
     #                 text=answer, emoji=random.choice(list("🌑🌒🌓🌔🌕🌖🌗🌘"))
     #             )
 
+    message_ids = []
     last_message_sent = await message.reply(
         message_response_split[0].strip(),
         mention_author=True,
         poll=poll if len(message_response_split) == 1 else None,  # type: ignore
     )
+    message_ids.append(last_message_sent.id)
 
     for i, chunk in enumerate(message_response_split[1:]):
         if chunk.strip():
@@ -664,8 +675,9 @@ async def send_response(
                 reference=last_message_sent,
                 poll=poll if len(message_response_split) == i + 2 else None,  # type: ignore
             )
+            message_ids.append(last_message_sent.id)
 
-    return
+    return message_ids
 
 
 async def get_chat_response(
