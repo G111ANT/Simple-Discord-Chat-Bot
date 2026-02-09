@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 import chat
 import tools
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,6 @@ if __name__ == "__main__":
     load_dotenv("./config/default.env")
 
     logger.info("Starting personality wrapper")
-    asyncio.run(tools.start_personality())
 
     logger.info("Loading chat db")
     os.makedirs("./db/", exist_ok=True)
@@ -87,7 +87,7 @@ if __name__ == "__main__":
             )
         )
         global profile_picture
-        personailties = await tools.get_personality()
+        personailties = await tools.get_personality(seed=time.time()//3600)
         if len(personailties) == 0:
             personailties = (
                 {

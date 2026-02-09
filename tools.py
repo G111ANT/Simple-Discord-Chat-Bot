@@ -421,7 +421,7 @@ async def get_personalties() -> PersonalitiesTuple:
         return ()
 
 
-async def update_personality(k: int = 6) -> PersonalitiesTuple:
+async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
     """
     Updates the global 'personalities' tuple.
 
@@ -440,6 +440,12 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
                             or if issues occur.
     """
     global personalities
+    global personality_seed
+
+    if "personality_seed" not in globals():
+        personality_seed = seed
+    elif personality_seed == seed:
+        return personalities
 
     available_personalities = await get_personalties()
     if not available_personalities:
@@ -450,12 +456,15 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
             personalities = ()
         return personalities
 
+    seeded_random = random.Random()
+    seeded_random.seed(seed)
+
     if personalities is None or not personalities:
         num_to_sample = min(k, len(available_personalities))
         if num_to_sample == 0 and len(available_personalities) > 0:
-            personalities = (random.choice(available_personalities),)
+            personalities = (seeded_random.choice(available_personalities),)
         elif num_to_sample > 0:
-            personalities = tuple(random.sample(available_personalities, num_to_sample))
+            personalities = tuple(seeded_random.sample(available_personalities, num_to_sample))
         else:
             personalities = ()
     else:
@@ -494,60 +503,3 @@ async def update_personality(k: int = 6) -> PersonalitiesTuple:
         logger.error(f"update_personality: {e}")
 
     return personalities
-
-
-async def update_personality_wrapper(ttl: int = 3600) -> None:
-    """
-    Periodically updates the global personalities.
-
-    This function runs in an infinite loop, calling `update_personality`
-    and then sleeping for `ttl` seconds. It's intended to be run as an
-    asyncio task.
-
-    Args:
-        ttl (int, optional): Time-to-live in seconds before the next update.
-                             Defaults to 3600 (1 hour).
-    """
-    while True:
-        await update_personality()
-        await sleep(ttl)
-
-
-async def get_personality() -> PersonalitiesTuple:
-    """
-    Retrieves the current set of active personalities.
-
-    If personalities have not been loaded yet (i.e., global `personalities`
-    is None), it triggers an initial load via `update_personality`.
-
-    Returns:
-        PersonalitiesTuple: The current tuple of active personalities.
-                            Returns an empty tuple if loading failed or none are set.
-    """
-    global personalities
-    if personalities is None:
-        await update_personality()
-
-    try:
-        async with aiofiles.open(tempfile.gettempdir() + "/current_p.json", "r", encoding="utf-8") as file:
-            personalities = ujson.loads(await file.read())
-    except Exception as e:
-        logger.error(f"update_personality: {e}")
-
-    return personalities if personalities is not None else ()
-
-
-async def start_personality() -> None:
-    """
-    Initializes and starts the personality management system.
-
-    Ensures personalities are loaded at startup by calling `get_personality`
-    (which in turn calls `update_personality` if needed).
-    Then, it creates a background asyncio task to periodically update
-    the personalities using `update_personality_wrapper`.
-    """
-    await get_personality()
-
-    asyncio.create_task(update_personality_wrapper())
-    logger.info("Personality update wrapper task started.")
-    return
