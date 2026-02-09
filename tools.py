@@ -3,6 +3,8 @@ import logging
 import random
 from asyncio import sleep
 import tempfile
+import functools
+import time
 
 import aiofiles
 import flatlatex
@@ -280,6 +282,33 @@ async def model_text_replace(text: str, replace_str: str) -> str:
             text = text.replace(text_to_find, text_to_replace_with)
     return text
 
+def profanity_chunker(words: list[str], prof_filter: glin_profanity.Filter) -> list[bool]:
+    len_words = len(words)
+    if len_words == 1:
+        return [prof_filter.is_profane(words[0])]
+    is_bad: list[bool] = []
+    half = len_words//2
+    if prof_filter.is_profane(" ".join(words[:half])):
+        left_is_bad = profanity_chunker(words[:half], prof_filter)
+        if all([not i for i in left_is_bad]):
+            is_bad.extend([True for _ in range(half)])
+        else:
+            is_bad.extend(left_is_bad)
+    else:
+        is_bad.extend([False for _ in range(half)])
+    
+    if prof_filter.is_profane(" ".join(words[half:])):
+        right_is_bad = profanity_chunker(words[half:], prof_filter)
+        if all([not i for i in right_is_bad]):
+            is_bad.extend([True for _ in range(len_words - half)])
+        else:
+            is_bad.extend(right_is_bad)
+    else:
+        is_bad.extend([False for _ in range(len_words - half)])
+    
+    assert len(is_bad) == len_words
+
+    return is_bad
 
 async def clear_text(string: str) -> str:
     """
@@ -311,11 +340,33 @@ async def clear_text(string: str) -> str:
     words = string.split(" ")
     processed_words: list[str] = []
     prof_filter = glin_profanity.Filter({"detect_leetspeak": True})
-    for word in words:
-        if word and prof_filter.is_profane(word.strip("|").strip()):
-            processed_words.append(f"||{word.strip("|").strip()}||")
-        else:
-            processed_words.append(word)
+    
+    is_bad = profanity_chunker(words, prof_filter)
+
+    processed_words.append(words[0])
+    if is_bad[0]:
+        processed_words[0] = f"||{processed_words[0].strip('|')}"
+        if len(words) >= 1 and not is_bad[2]:
+            processed_words[0] = f"{processed_words[0]}||"
+
+    for i in range(1, len(words) - 1):
+        processed_words.append(words[i])
+
+        if not is_bad[i]:
+            continue
+
+        processed_words[-1] = processed_words[-1].strip("|")
+        if not is_bad[i - 1]:
+            processed_words[-1] = f"||{processed_words[-1]}"
+        
+        if not is_bad[i + 1]:
+            processed_words[-1] = f"{processed_words[-1]}||"
+
+    processed_words.append(words[-1])
+    if is_bad[-1]:
+        processed_words[-1] = f"{processed_words[-1].strip('|')}||"
+        if len(words) >= 1 and not is_bad[-2]:
+            processed_words[-1] = f"{processed_words[-1]}||"
 
     cleaned_string = " ".join(processed_words)
 
@@ -420,7 +471,6 @@ async def get_personalties() -> PersonalitiesTuple:
         logger.error(f"Unexpected error reading personalities async: {e}")
         return ()
 
-
 async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
     """
     Updates the global 'personalities' tuple.
@@ -440,12 +490,13 @@ async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
                             or if issues occur.
     """
     global personalities
-    global personality_seed
+    global last_time
 
-    if "personality_seed" not in globals():
-        personality_seed = seed
-    elif personality_seed == seed:
+    if "last_time" not in globals():
+        last_time = time.time()
+    elif time.time()//3600 == last_time//3600 and "personalities" in globals():
         return personalities
+    last_time = time.time()
 
     available_personalities = await get_personalties()
     if not available_personalities:

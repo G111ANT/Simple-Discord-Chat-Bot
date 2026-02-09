@@ -87,7 +87,7 @@ if __name__ == "__main__":
             )
         )
         global profile_picture
-        personailties = await tools.get_personality(seed=time.time()//3600)
+        personailties = await tools.get_personality()
         if len(personailties) == 0:
             personailties = (
                 {
