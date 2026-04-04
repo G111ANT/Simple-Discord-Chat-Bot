@@ -85,7 +85,7 @@ async def messages_from_history(
     current_char_count = 0
 
     for past_message in past_messages[::-1]:
-        author_name = past_message.author.display_name[0],
+        author_name = past_message.author.display_name
         role = "user"
         if past_message.author.id == discord_client.application_id:
             search_results = await personality_db.search(tinydb.Query().id == past_message.id)
@@ -395,8 +395,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                     ],
                 }
             ],  # type: ignore
-            model=VISION_MODEL,  # type: ignore
-            max_tokens=150,
+            model=VISION_MODEL,  # type: ignore        
         )
         description_content = description_response.choices[0].message.content
     except Exception as e:
@@ -433,11 +432,11 @@ async def text_summary(text: str) -> str:
     client = _get_openai_client()
     summarize_prompt_text = (
         "Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. "
-        "Only respond with the new version, otherwise return only ERROR, and nothing else."
+        "respond with the new version in xml called SUMMARY (e.g. <SUMMARY>They talking about dogs</SUMMARY>)."
         "\n\n"
-        "Text:\n{text}"
-        "\n\n"
-        "New text:\n"
+        "<TEXT>"
+        f"{text}"
+        "</TEXT>"
     )
     summarize_prompt = {"role": "user", "content": summarize_prompt_text}
 
@@ -445,9 +444,13 @@ async def text_summary(text: str) -> str:
         response = await client.chat.completions.create(
             messages=[summarize_prompt],  # type: ignore
             model=ROUTER_MODEL,  # type: ignore
-            max_tokens=50,
+            
         )
         content = response.choices[0].message.content
+
+        match = re.match(r"(?<=<SUMMARY>).*?(?=</SUMMARY>)", content, flags=re.DOTALL | re.IGNORECASE)
+        if match is not None:
+            content = match.group(0)
 
     except Exception as e:
         logger.error(f"OpenAI API call for summary creation failed: {e}")
@@ -546,8 +549,7 @@ async def get_summary(messages: str) -> str:
         messages=[
             {"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}
         ],
-        model=ROUTER_MODEL,  # type: ignore
-        max_tokens=300,
+        model=ROUTER_MODEL  # type: ignore
     )
     content = response.choices[0].message.content
     return content  # type: ignore
@@ -584,9 +586,7 @@ async def should_respond(
         response = await client.chat.completions.create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
             + [{"role": "user", "content": prompt_content}],  # type: ignore
-            model=ROUTER_MODEL,  # type: ignore
-            max_tokens=10,
-            temperature=0.1,
+            model=ROUTER_MODEL  # type: ignore
         )
         content = response.choices[0].message.content
     except Exception as e:
