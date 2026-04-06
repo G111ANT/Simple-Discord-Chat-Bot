@@ -339,7 +339,7 @@ async def clear_text(string: str) -> str:
 
     words = string.split(" ")
     processed_words: list[str] = []
-    prof_filter = glin_profanity.Filter({"detect_leetspeak": True})
+    prof_filter = glin_profanity.Filter()
     
     is_bad = profanity_chunker(words, prof_filter)
 

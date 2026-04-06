@@ -384,7 +384,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                     "content": [
                         {
                             "type": "text",
-                            "text": "Write a description that could be used for alt text. Only respond with the alt text, nothing else.\n\nALT TEXT:\n\n",
+                            "text": "Write a description of the image, return the description in XML tags called DESCRIPTION (e.g. <DESCRIPTION>The photo has...</DESCRIPTION>).",
                         },
                         {
                             "type": "image_url",
@@ -398,6 +398,11 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             model=VISION_MODEL,  # type: ignore        
         )
         description_content = description_response.choices[0].message.content
+
+        match = re.match(r"(?<=<DESCRIPTION.*?>).*?(?=</DESCRIPTION>)", description_content, flags=re.DOTALL | re.IGNORECASE)
+        if match is not None:
+            description_content = match.group(0)
+
     except Exception as e:
         logger.error(f"OpenAI API call for image description for {url} failed: {e}")
         return ""
@@ -448,7 +453,7 @@ async def text_summary(text: str) -> str:
         )
         content = response.choices[0].message.content
 
-        match = re.match(r"(?<=<SUMMARY>).*?(?=</SUMMARY>)", content, flags=re.DOTALL | re.IGNORECASE)
+        match = re.match(r"(?<=<SUMMARY.*?>).*?(?=</SUMMARY>)", content, flags=re.DOTALL | re.IGNORECASE)
         if match is not None:
             content = match.group(0)
 
@@ -578,7 +583,7 @@ async def should_respond(
         f"{summary_prompt}The last message in the conversations was:\n"
         f"{last_message_content}\n\n"
         f'Would a chat bot described as "{personality_summary_desc}" add their thoughts to this online conversation?\n\n'
-        f"Only respond with YES or NO"
+        f"Respond with YES or NO in XML tags called RESPONSE (e.g. <RESPONSE>YES</RESPONSE>)"
     )
 
     client = _get_openai_client()
@@ -589,6 +594,11 @@ async def should_respond(
             model=ROUTER_MODEL  # type: ignore
         )
         content = response.choices[0].message.content
+
+        match = re.match(r"(?<=<RESPONSE.*?>).*?(?=</RESPONSE>)", content, flags=re.DOTALL | re.IGNORECASE)
+        if match is not None:
+            content = match.group(0)
+
     except Exception as e:
         logger.error(f"OpenAI API call for should_respond failed: {e}")
         return False
