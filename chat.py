@@ -18,7 +18,7 @@ from aiocache import cached
 from dotenv import load_dotenv
 from openai import AsyncClient
 from PIL import Image
-
+import easyocr
 import tools
 
 # from better_profanity import profanity
@@ -447,10 +447,16 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     except Exception as e:
         logger.error(f"OpenAI API call for image description for {url} failed: {e}")
-        return ""
+        description_content = ""
 
     if description_content is None:
-        return ""
+        try:
+            reader = easyocr.Reader(["en"])
+            result = reader.readtext(resized_filepath, detail=0, gpu=False)
+            return "\n\n".join(result)
+        except Exception as e:
+            logger.error(f"Easyocr error for {url}: {e}")
+            return ""
 
     description_content = "".join(
         filter(
