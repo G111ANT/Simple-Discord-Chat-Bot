@@ -14,9 +14,9 @@ Make all the prompts use XML/JSON/YAML based on env called `SIMPLE_CHAT_PROMPT_F
 ## Clean up folder struct
 Move `.env` and `default.env` out of `config/`
 
-# 5.
+<!-- # 5.
 ## Add web search
-Add web search
+Add web search -->
 
 # 6.
 ## Clean up
