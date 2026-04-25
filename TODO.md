@@ -2,9 +2,9 @@
 ## ai models
 Add `_FALLBACK` for api keys, base url and model -->
 
-# 2.
+<!-- # 2.
 ## Handle images better
-We should changes this to try to use `SIMPLE_CHAT_CHAT_MODEL(_FALLBACK)` to describe the image, otherwise falling back to OCR.
+We should changes this to try to use `SIMPLE_CHAT_CHAT_MODEL(_FALLBACK)` to describe the image, otherwise falling back to OCR. -->
 
 # 3.
 ## Prompting
