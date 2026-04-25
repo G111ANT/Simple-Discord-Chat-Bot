@@ -676,7 +676,6 @@ async def send_response(
             )
 
     to_send = await get_chat_response(messages, str(current_personality))
-    logger.info(f"send_response diagnostic: get_chat_response returned keys={list(to_send.keys())}, to_send={to_send!r}")
 
     if "content" not in to_send:
         logger.error(f"send_response FAILURE PATH 1: 'content' key missing from AI response. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
