@@ -705,15 +705,26 @@ async def get_chat_response(
         )
         return {}
 
+    web_search_result = "<WEB_SEARCH>\n</WEB_SEARCH>"
+    if "content" in messages[0]:
+        word_count = 0
+        web_search_result = "<WEB_SEARCH>\n"
+        for result in tools.web_search(messages[0].get("content")):
+            if word_count > 500:
+                continue
+            word_count += len(result.split())
+            web_search_result += f"<RESULT>\n{result}\n</RESULT>\n"
+        web_search_result += "</WEB_SEARCH>"
+
     personality_str = personality
     personality_str = f"<PERSONALITY>{personality_str}</PERSONALITY>"
     messages_with_systems = (
-        "You are a chat bot for a social media platform"
-        "Your job is to respond to the messages they way a bot with the personality in the **PERSONALITY** tags would."
-        "When you see `chat_bot` that is you."
+        "You are a chat bot for a social media platform.\n"
+        "Your job is to respond to the messages they way a bot with the personality in the **PERSONALITY** tags would.\n"
+        "When you see `chat_bot` that is you.\n"
         # "You can mention people by `<@user_id>`, where user id is there id, (so if there id is `10`, then the mention would look like `<@10>`)."
         # TODO: ats should be in the form: `<@user_id>`, We need to convert names to ids.
-        "You can mention people by `<@USER_NAME>`, where USER_NAME is their USER_NAME, (so if there id name `steve`, then the mention would look like `<@steve>`)."
+        "You can mention people by `<@USER_NAME>`, where USER_NAME is their USER_NAME, (so if there id name `steve`, then the mention would look like `<@steve>`).\n"
         "The messages are in xml format,\n"
         " - **PAST_SUMMARY** is the summary of the conversation before the current one\n"
         " - **TYPE** is the type of author (`chat_bot` (you), `user`, or `other_bot`)\n"
@@ -724,7 +735,8 @@ async def get_chat_response(
         " - **CONTENT** is the actual message\n"
         " - **IMAGE** is a list of images sent with the message\n\n"
         " - **POLL** is information about any poll attached to the message"
-        "Unless asked, do not repeat past messages"
+        "Unless asked, do not repeat past messages.\n"
+        "You are also given some result from a web search that may help with the final response.\n"
         "The final message must be in a xml called `RESPONSE` example: `<RESPONSE>I love chess.</RESPONSE>`.\n"
         "Optional polls can be add to a message using the following format:\n"
         "```XML\n"
@@ -738,6 +750,7 @@ async def get_chat_response(
         "```\n"
         "NOTE: to run a poll you must also have a `RESPONSE`, also use polls sparingly, lastly there can only be one poll.\n"
         "```XML\n"
+        "<WEB_SEARCH>\n"
         f"{personality_str}"
         "\n\n"
         f"{message_history_to_xml(messages)}"
