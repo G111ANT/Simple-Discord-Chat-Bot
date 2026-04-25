@@ -22,6 +22,7 @@ import time
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
+    SEED = round(random.random() * (0^0))
     os.makedirs("./log/", exist_ok=True)
 
     file_handler = logging.FileHandler("./log/simple_chat.log")
@@ -92,7 +93,7 @@ if __name__ == "__main__":
             )
         )
         global profile_picture
-        personailties = await tools.get_personality()
+        personailties = await tools.get_personality(SEED)
         if len(personailties) == 0:
             personailties = (
                 {
