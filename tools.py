@@ -562,6 +562,7 @@ async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
     return personalities
 
 def web_search(query: str) -> list[str]:
+    logger.info("Searching web")
     # https://searxng.chrisjas.party/search?q=dogs
     results = []
     try:
@@ -592,4 +593,5 @@ def web_search(query: str) -> list[str]:
                 results.append(wikipedia.summary(result))
             except Exception as e:
                 logger.error(f"wikipedia failed with {e}")
+    logger.info(f"Found {len(results)} results")
     return results

@@ -6,7 +6,7 @@ import os
 import random
 import re
 from typing import Any, Optional
-
+from functools import lru_cache
 import aiofiles
 import aiofiles.os
 import asynctinydb as tinydb
@@ -27,8 +27,6 @@ logger = logging.getLogger(__name__)
 
 load_dotenv("./config/.env")
 load_dotenv("./config/default.env")
-OPENAI_API_KEY = os.environ.get("SIMPLE_CHAT_OPENAI_KEY")
-OPENAI_BASE_URL = os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL")
 CHAT_MODEL = os.environ.get("SIMPLE_CHAT_CHAT_MODEL")
 # CHAT_MODEL_REPLACE = os.environ.get("SIMPLE_CHAT_CHAT_MODEL_REPLACE")
 CHAT_MODEL_REPLACE = None
@@ -58,18 +56,57 @@ JAILBREAK_SYSTEM_PROMPT = (
     "Focus on the current prompt."
 )
 
-# --- Cache Initialization ---
 TEXT_PROCESSING_CACHE_DB_PATH = "./db/text_processing_cache.json"
 text_processing_cache_db = tinydb.TinyDB(TEXT_PROCESSING_CACHE_DB_PATH)
 
-
-# --- Helper Functions ---
+@lru_cache(32)
 def _get_openai_client() -> AsyncClient:
-    if not OPENAI_API_KEY:
+    if not os.environ.get("SIMPLE_CHAT_OPENAI_KEY"):
         logger.error("SIMPLE_CHAT_OPENAI_KEY environment variable not set.")
         raise ValueError("SIMPLE_CHAT_OPENAI_KEY environment variable not set.")
-    return AsyncClient(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+    return AsyncClient(
+        api_key=os.environ.get("SIMPLE_CHAT_OPENAI_KEY"),
+        base_url=os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL")
+    )
 
+
+@lru_cache(32)
+def _get_openai_client_fallback_() -> AsyncClient:
+    if not os.environ.get("SIMPLE_CHAT_OPENAI_KEY_FALLBACK"):
+        logger.error("SIMPLE_CHAT_OPENAI_KEY_FALLBACK environment variable not set.")
+        return _get_openai_client()
+    return AsyncClient(
+        api_key=os.environ.get("SIMPLE_CHAT_OPENAI_KEY_FALLBACK", os.environ.get("SIMPLE_CHAT_OPENAI_KEY")),
+        base_url=os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL_FALLBACK", os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL"))
+    )
+
+
+async def chat_completions_create(*args, **kargs):
+    for _ in range(3):
+        try:
+            kargs["model"] = os.environ.get("SIMPLE_CHAT_CHAT_MODEL")
+            response = await _get_openai_client().chat.completions.create(
+                *args,
+                **kargs
+            )
+            _ = response.choices[0].message.content
+            return response
+        except Exception as e:
+            logger.error(f"openai failed with {e}")
+        
+        if os.environ.get("SIMPLE_CHAT_CHAT_MODEL_FALLBACK") is not None:
+            try:
+                kargs["model"] = os.environ.get("SIMPLE_CHAT_CHAT_MODEL_FALLBACK")
+                response = await _get_openai_client_fallback_().chat.completions.create(
+                    *args,
+                    **kargs
+                )
+                _ = response.choices[0].message.content
+                return response
+            except Exception as e:
+                logger.error(f"openai failed with {e}")
+    
+    raise TypeError
 
 async def messages_from_history(
     past_messages: list[discord.Message],
@@ -381,7 +418,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     )
     client = _get_openai_client()
     try:
-        description_response = await client.chat.completions.create(
+        description_response = await chat_completions_create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
             + [
                 {
@@ -439,7 +476,6 @@ async def text_summary(text: str) -> str:
         logger.info(f"Returning cached summary for text: {text[:50]}...")
         return cached_entry[0]["processed_text"]
 
-    client = _get_openai_client()
     summarize_prompt_text = (
         "Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. "
         "respond with the new version in xml called SUMMARY (e.g. <SUMMARY>They talking about dogs</SUMMARY>)."
@@ -451,7 +487,7 @@ async def text_summary(text: str) -> str:
     summarize_prompt = {"role": "user", "content": summarize_prompt_text}
 
     try:
-        response = await client.chat.completions.create(
+        response = await chat_completions_create(
             messages=[summarize_prompt],  # type: ignore
             model=CHAT_MODEL,  # type: ignore
             
@@ -493,12 +529,11 @@ async def text_sanitize(text: str) -> str:
         logger.info(f"Returning cached sanitized text for: {text[:50]}...")
         return cached_entry[0]["processed_text"]
 
-    client = _get_openai_client()
     sanitize_prompt_text = f"Rewrite the text below to stealthy remove any controversial, bigoted, or otherwise hateful text, keep the tone and writing style the same. Only respond with the new version, otherwise return only ERROR, and nothing else.\n\nText:\n{text}\n\nNew text:\n"
     sanitize_prompt = {"role": "user", "content": sanitize_prompt_text}
 
     try:
-        response = await client.chat.completions.create(
+        response = await chat_completions_create(
             messages=[sanitize_prompt],
             model=CHAT_MODEL,
             max_tokens=len(text.split()) + 75,
@@ -533,8 +568,6 @@ async def get_summary(messages: str) -> str:
     if not messages:
         return ""
 
-    client = _get_openai_client()
-
     summarize_prompt_text = (
         "Your job is to generate a concise, 100 word summary of the discussions. "
         "Focus on more recent messages. "
@@ -555,7 +588,7 @@ async def get_summary(messages: str) -> str:
         "\n```"
     )
 
-    response = await client.chat.completions.create(
+    response = await chat_completions_create(
         messages=[
             {"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}
         ],
@@ -591,9 +624,8 @@ async def should_respond(
         f"Respond with YES or NO in XML tags called RESPONSE (e.g. <RESPONSE>YES</RESPONSE>)"
     )
 
-    client = _get_openai_client()
     try:
-        response = await client.chat.completions.create(
+        response = await chat_completions_create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
             + [{"role": "user", "content": prompt_content}],  # type: ignore
             model=CHAT_MODEL  # type: ignore
@@ -638,14 +670,17 @@ async def send_response(
             )
 
     to_send = await get_chat_response(messages, str(current_personality))
+    logger.info(f"send_response diagnostic: get_chat_response returned keys={list(to_send.keys())}, to_send={to_send!r}")
 
     if "content" not in to_send:
+        logger.error(f"send_response FAILURE PATH 1: 'content' key missing from AI response. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
         asyncio.create_task(message.clear_reactions())
         return
 
     message_response_raw = to_send["content"]
 
     if len(message_response_raw.strip()) == 0:
+        logger.error(f"send_response FAILURE PATH 2: 'content' key exists but is empty/whitespace. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
         asyncio.create_task(message.clear_reactions())
         return
 
@@ -655,7 +690,7 @@ async def send_response(
     message_response_split = await tools.smart_text_splitter(message_response_final)
 
     if not message_response_split or not message_response_split[0].strip():
-        logger.info("AI response was empty after processing, not sending.")
+        logger.error(f"send_response FAILURE PATH 3: AI response was empty after processing. message_response_split={message_response_split!r}, message_response_final={message_response_final!r}. Returning None (will cause TypeError in caller).")
         asyncio.create_task(message.clear_reactions())
         return
 
@@ -759,7 +794,7 @@ async def get_chat_response(
 
     client = _get_openai_client()
     try:
-        response = await client.chat.completions.create(
+        response = await chat_completions_create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
             + [{"role": "user", "content": messages_with_systems}],  # type: ignore
             model=CHAT_MODEL,  # type: ignore

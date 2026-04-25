@@ -290,10 +290,14 @@ if __name__ == "__main__":
             return
 
         logger.info(
-            f'Sent "{await chat.message_history_to_xml(message_history)[:100]}..." (newest) to the AI from history of {len(message_history)}'
+            f'Sent "{(await chat.message_history_to_xml(message_history))[:100]}..." (newest) to the AI from history of {len(message_history)}'
         )
 
-        message_ids: list[int] = await chat.send_response(message_history, message, pers) # type: ignore
+        message_ids: list[int] | None = await chat.send_response(message_history, message, pers) # type: ignore
+        logger.info(f"send_response returned: {message_ids!r} (type={type(message_ids).__name__})")
+        if message_ids is None:
+            logger.error("send_response returned None! This will cause a TypeError on the next line. Check chat.py logs for the failure path.")
+            return
 
         for message_id in message_ids:
             await personality_db.insert({"name": personality_name, "id": message_id})

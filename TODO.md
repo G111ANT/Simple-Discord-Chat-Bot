@@ -1,6 +1,6 @@
-# 1.
+<!-- # 1.
 ## ai models
-Add `_FALLBACK` for api keys, base url and model
+Add `_FALLBACK` for api keys, base url and model -->
 
 # 2.
 ## Handle images better
