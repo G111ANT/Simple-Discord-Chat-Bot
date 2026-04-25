@@ -12,6 +12,7 @@ import ujson
 import glin_profanity
 import requests
 import wikipedia
+import os
 
 logger = logging.getLogger(__name__)
 

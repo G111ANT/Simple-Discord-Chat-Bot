@@ -238,7 +238,7 @@ async def messages_from_history(
     return message_history, message_history_to_compress
 
 
-def message_history_to_xml(history: tuple[list[dict], list[dict]]) -> str:
+async def message_history_to_xml(history: tuple[list[dict], list[dict]]) -> str:
     message_history, message_history_to_compress = history
     final_data = ""
 
@@ -579,7 +579,7 @@ async def should_respond(
     else:
         personality_summary_desc = personality.get("summary", "A discord chat bot.")
 
-    summary = await get_summary(message_history_to_xml(messages))
+    summary = await get_summary(await message_history_to_xml(messages))
     summary_prompt = (
         f'The summary of the conversations is "{summary}".\n' if summary else ""
     )
@@ -753,7 +753,7 @@ async def get_chat_response(
         "<WEB_SEARCH>\n"
         f"{personality_str}"
         "\n\n"
-        f"{message_history_to_xml(messages)}"
+        f"{await message_history_to_xml(messages)}"
         "\n```"
     )
 

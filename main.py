@@ -290,7 +290,7 @@ if __name__ == "__main__":
             return
 
         logger.info(
-            f'Sent "{message_history[:100]}..." (newest) to the AI from history of {len(message_history)}'
+            f'Sent "{await chat.message_history_to_xml(message_history)[:100]}..." (newest) to the AI from history of {len(message_history)}'
         )
 
         message_ids: list[int] = await chat.send_response(message_history, message, pers) # type: ignore
