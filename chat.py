@@ -29,9 +29,7 @@ load_dotenv("./config/.env")
 load_dotenv("./config/default.env")
 OPENAI_API_KEY = os.environ.get("SIMPLE_CHAT_OPENAI_KEY")
 OPENAI_BASE_URL = os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL")
-CHAT_MODEL = os.environ.get("SIMPLE_CHAT_CHAT_MODEL", "")
-VISION_MODEL = CHAT_MODEL
-ROUTER_MODEL = CHAT_MODEL
+CHAT_MODEL = os.environ.get("SIMPLE_CHAT_CHAT_MODEL")
 # CHAT_MODEL_REPLACE = os.environ.get("SIMPLE_CHAT_CHAT_MODEL_REPLACE")
 CHAT_MODEL_REPLACE = None
 MAX_TOKENS_STR = os.environ.get("SIMPLE_CHAT_MAX_TOKENS", "4096")
@@ -40,10 +38,10 @@ MAX_TOKENS_STR = os.environ.get("SIMPLE_CHAT_MAX_TOKENS", "4096")
 try:
     MAX_HISTORY_CHARACTERS = (float(MAX_TOKENS_STR) // 4) * 3
 except ValueError:
+    MAX_HISTORY_CHARACTERS = (4096 // 4)  * 3
     logger.error(
-        f"Invalid SIMPLE_CHAT_MAX_TOKENS value: {MAX_TOKENS_STR}. Defaulting to 3072 characters."
+        f"Invalid SIMPLE_CHAT_MAX_TOKENS value: {MAX_TOKENS_STR}. Defaulting to {MAX_HISTORY_CHARACTERS} characters."
     )
-    MAX_HISTORY_CHARACTERS = 3072
 
 FILTER_IMAGES = os.environ.get("SIMPLE_CHAT_FILTER_IMAGES", "false").lower() in (
     "true",
@@ -81,7 +79,7 @@ async def messages_from_history(
     image_db: tinydb.TinyDB,
     personality_name: str,
     personality_db: tinydb.TinyDB,
-) -> str:
+) -> tuple[list[dict], list[dict]]:
     message_history = []
     message_history_to_compress = []
     current_char_count = 0
@@ -340,7 +338,8 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                     await file.write(chunk)
 
         with Image.open(original_filepath) as img:
-            new_img = img.resize((256, 256)).convert("RGB")
+            # new_img = img.resize((256, 256)).convert("RGB")
+            new_img = img.convert("RGB")
             img_hash = str(imagehash.average_hash(new_img))
             new_img.save(resized_filepath, "JPEG")
 
@@ -401,7 +400,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                     ],
                 }
             ],  # type: ignore
-            model=VISION_MODEL,  # type: ignore        
+            model=CHAT_MODEL,  # type: ignore        
         )
         description_content = description_response.choices[0].message.content
 
@@ -454,7 +453,7 @@ async def text_summary(text: str) -> str:
     try:
         response = await client.chat.completions.create(
             messages=[summarize_prompt],  # type: ignore
-            model=ROUTER_MODEL,  # type: ignore
+            model=CHAT_MODEL,  # type: ignore
             
         )
         content = response.choices[0].message.content
@@ -501,7 +500,7 @@ async def text_sanitize(text: str) -> str:
     try:
         response = await client.chat.completions.create(
             messages=[sanitize_prompt],
-            model=ROUTER_MODEL,
+            model=CHAT_MODEL,
             max_tokens=len(text.split()) + 75,
         )
         content = response.choices[0].message.content
@@ -560,7 +559,7 @@ async def get_summary(messages: str) -> str:
         messages=[
             {"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}
         ],
-        model=ROUTER_MODEL  # type: ignore
+        model=CHAT_MODEL  # type: ignore
     )
     content = response.choices[0].message.content
     return content  # type: ignore
@@ -597,7 +596,7 @@ async def should_respond(
         response = await client.chat.completions.create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
             + [{"role": "user", "content": prompt_content}],  # type: ignore
-            model=ROUTER_MODEL  # type: ignore
+            model=CHAT_MODEL  # type: ignore
         )
         content = response.choices[0].message.content
 
@@ -713,6 +712,8 @@ async def get_chat_response(
         "Your job is to respond to the messages they way a bot with the personality in the **PERSONALITY** tags would."
         "When you see `chat_bot` that is you."
         # "You can mention people by `<@user_id>`, where user id is there id, (so if there id is `10`, then the mention would look like `<@10>`)."
+        # TODO: ats should be in the form: `<@user_id>`, We need to convert names to ids.
+        "You can mention people by `<@USER_NAME>`, where USER_NAME is their USER_NAME, (so if there id name `steve`, then the mention would look like `<@steve>`)."
         "The messages are in xml format,\n"
         " - **PAST_SUMMARY** is the summary of the conversation before the current one\n"
         " - **TYPE** is the type of author (`chat_bot` (you), `user`, or `other_bot`)\n"
