@@ -25,16 +25,18 @@ import tools
 
 logger = logging.getLogger(__name__)
 
-# --- Constants ---
 load_dotenv("./config/.env")
 load_dotenv("./config/default.env")
 OPENAI_API_KEY = os.environ.get("SIMPLE_CHAT_OPENAI_KEY")
 OPENAI_BASE_URL = os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL")
-VISION_MODEL = os.environ.get("SIMPLE_CHAT_VISION_MODEL")
-ROUTER_MODEL = os.environ.get("SIMPLE_CHAT_ROUTER_MODEL")
-CHAT_MODEL = os.environ.get("SIMPLE_CHAT_CHAT_MODEL")
-CHAT_MODEL_REPLACE = os.environ.get("SIMPLE_CHAT_CHAT_MODEL_REPLACE")
+CHAT_MODEL = os.environ.get("SIMPLE_CHAT_CHAT_MODEL", "")
+VISION_MODEL = CHAT_MODEL
+ROUTER_MODEL = CHAT_MODEL
+# CHAT_MODEL_REPLACE = os.environ.get("SIMPLE_CHAT_CHAT_MODEL_REPLACE")
+CHAT_MODEL_REPLACE = None
 MAX_TOKENS_STR = os.environ.get("SIMPLE_CHAT_MAX_TOKENS", "4096")
+
+# TODO: use a better estimate
 try:
     MAX_HISTORY_CHARACTERS = (float(MAX_TOKENS_STR) // 4) * 3
 except ValueError:
@@ -116,7 +118,7 @@ async def messages_from_history(
                 replacement_text = "chat_bot"
             else:
                 try:
-                    at_user = await discord_client.fetch_user(mid)
+                    at_user = await discord_client.fetch_user(mid) # TODO: add caching
                     replacement_text = at_user.display_name
                 except discord.NotFound:
                     logger.warning(f"Could not fetch user for mention ID: {mid}")
@@ -235,6 +237,11 @@ async def messages_from_history(
         else:
             message_history_to_compress[-1].append(message_data)
 
+    return message_history, message_history_to_compress
+
+
+def message_history_to_xml(history: tuple[list[dict], list[dict]]) -> str:
+    message_history, message_history_to_compress = history
     final_data = ""
 
     if len(message_history_to_compress) > 0:
@@ -262,7 +269,6 @@ async def messages_from_history(
         final_data += "</MESSAGE>\n"
 
     return final_data.strip()
-
 
 def message_to_xml(message: dict) -> str:
     final_data = ""
@@ -574,7 +580,7 @@ async def should_respond(
     else:
         personality_summary_desc = personality.get("summary", "A discord chat bot.")
 
-    summary = await get_summary(messages)
+    summary = await get_summary(message_history_to_xml(messages))
     summary_prompt = (
         f'The summary of the conversations is "{summary}".\n' if summary else ""
     )
@@ -733,7 +739,7 @@ async def get_chat_response(
         "```XML\n"
         f"{personality_str}"
         "\n\n"
-        f"{messages}"
+        f"{message_history_to_xml(messages)}"
         "\n```"
     )
 

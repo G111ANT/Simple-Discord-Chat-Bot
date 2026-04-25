@@ -10,9 +10,12 @@ import aiofiles
 import flatlatex
 import ujson
 import glin_profanity
+import requests
+import wikipedia
 
 logger = logging.getLogger(__name__)
 
+SEARXNG_URL = os.environ.get("SIMPLE_CHAT_SEARXNG_URL", None)
 
 # https://stackoverflow.com/questions/70640701/python-logger-limit-string-size
 class NotTooLongStringFormatter(logging.Formatter):
@@ -335,6 +338,8 @@ async def clear_text(string: str) -> str:
     >>> asyncio.run(clear_text(""))
     '\\u200e'
     """
+    return string + "\u200e"
+
     logger.info(f"Cleaning text. Input snippet: {string[:100]}...")
 
     words = string.split(" ")
@@ -554,3 +559,36 @@ async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
         logger.error(f"update_personality: {e}")
 
     return personalities
+
+def web_search(query: str) -> list[str]:
+    # https://searxng.chrisjas.party/search?q=dogs
+    results = []
+    try:
+        params = {
+            "q": query,
+            "format": "json"
+        }
+
+        response = requests.get(f"{SEARXNG_URL}/search", params=params)
+        data = response.json()
+        for result in data.get("results", []):
+            formated_result = ""
+            if len(result.get("title", "").split()) > 4:
+                formated_result += "## " + result.get("title", "") + "\n"
+            if len(result.get("content", "").split()) > 4:
+                formated_result += result.get("content", "")
+            if len(formated_result) > 0:
+                results.append(formated_result)
+    except Exception as e:
+        logger.error(f"searxng failed with {e}")
+
+    if len(results) == 0:
+        search, suggest = wikipedia.search(query, suggestion=True)
+        if type(suggest) is list:
+            search += suggest
+        for result in search:
+            try:
+                results.append(wikipedia.summary(result))
+            except Exception as e:
+                logger.error(f"wikipedia failed with {e}")
+    return results
