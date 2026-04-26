@@ -13,6 +13,7 @@ import glin_profanity
 import requests
 import wikipedia
 import os
+import fastembed
 
 logger = logging.getLogger(__name__)
 
@@ -594,4 +595,14 @@ def web_search(query: str) -> list[str]:
             except Exception as e:
                 logger.error(f"wikipedia failed with {e}")
     logger.info(f"Found {len(results)} results")
-    return results
+
+    rerank_model = fastembed.rerank.cross_encoder.TextCrossEncoder(
+        "Xenova/ms-marco-MiniLM-L-6-v2"
+    )
+
+    ranked = zip(rerank_model.rerank(
+        query,
+        results
+    ), results)
+    print(ranked)
+    return [i[1] for i in sorted(ranked, key=lambda x: x[0], reverse=True)]

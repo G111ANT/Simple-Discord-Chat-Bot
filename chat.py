@@ -18,7 +18,7 @@ from aiocache import cached
 from dotenv import load_dotenv
 from openai import AsyncClient
 from PIL import Image
-from paddleocr import PaddleOCR
+import easyocr
 import tools
 
 # from better_profanity import profanity
@@ -177,7 +177,7 @@ async def messages_from_history(
             for attachment in past_message.attachments:
                 try:
                     description = await asyncio.wait_for(
-                        image_describe(attachment.url, image_db), timeout=10
+                        image_describe(attachment.url, image_db), timeout=60
                     )
                     if description:
                         image_markdown.append(description)
@@ -192,7 +192,7 @@ async def messages_from_history(
                     try:
                         description = await asyncio.wait_for(
                             image_describe(embed.thumbnail.proxy_url, image_db),
-                            timeout=10,
+                            timeout=60,
                         )
                         if description:
                             image_markdown.append(description)
