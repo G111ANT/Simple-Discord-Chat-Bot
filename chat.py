@@ -449,20 +449,9 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     if not description_content:
         try:
-            ocr = PaddleOCR(
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False
-            )
-            result = ocr.ocr(resized_filepath)
-            content = ""
-            for idx in range(len(result)):
-                res = result[idx]
-                if res is not None:
-                    for line in res:
-                        extracted_text = line[1][0]
-                        markdown_content += f"{extracted_text}\n\n"
-            return content
+            reader = easyocr.Reader(["en"])
+            result = reader.readtext(resized_filepath, detail=0, gpu=False)
+            return "\n\n".join(result)
         except Exception as e:
             logger.error(f"Easyocr error for {url}: {e}")
             return ""
