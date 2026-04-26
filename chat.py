@@ -441,15 +441,15 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         )
         description_content = description_response.choices[0].message.content
 
-        match = re.match(r"(?<=<DESCRIPTION.*?>).*?(?=</DESCRIPTION>)", description_content, flags=re.DOTALL | re.IGNORECASE)
+        match = re.search(r"<DESCRIPTION.*?>(.*?)</DESCRIPTION>", description_content, flags=re.DOTALL | re.IGNORECASE)
         if match is not None:
             description_content = match.group(0)
 
     except Exception as e:
         logger.error(f"OpenAI API call for image description for {url} failed: {e}")
-        description_content = ""
+        description_content = None
 
-    if description_content is None:
+    if not description_content:
         try:
             reader = easyocr.Reader(["en"])
             result = reader.readtext(resized_filepath, detail=0, gpu=False)
