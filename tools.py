@@ -604,5 +604,4 @@ def web_search(query: str) -> list[str]:
         query,
         results
     ), results)
-    print(ranked)
     return [i[1] for i in sorted(ranked, key=lambda x: x[0], reverse=True)]
