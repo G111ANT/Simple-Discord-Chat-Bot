@@ -478,7 +478,7 @@ async def get_personalties() -> PersonalitiesTuple:
         logger.error(f"Unexpected error reading personalities async: {e}")
         return ()
 
-async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
+async def get_personality(k: int = 6) -> PersonalitiesTuple:
     """
     Updates the global 'personalities' tuple.
 
@@ -499,9 +499,7 @@ async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
     global personalities
     global last_time
 
-    if "last_time" not in globals():
-        last_time = time.time()
-    elif time.time()//3600 == last_time//3600 and "personalities" in globals():
+    if "last_time" in globals() and time.time()//3600 == last_time//3600 and "personalities" in globals():
         return personalities
     last_time = time.time()
 
@@ -514,15 +512,12 @@ async def get_personality(k: int = 6, seed=0) -> PersonalitiesTuple:
             personalities = ()
         return personalities
 
-    seeded_random = random.Random()
-    seeded_random.seed(seed)
-
     if personalities is None or not personalities:
         num_to_sample = min(k, len(available_personalities))
         if num_to_sample == 0 and len(available_personalities) > 0:
-            personalities = (seeded_random.choice(available_personalities),)
+            personalities = (random.choice(available_personalities),)
         elif num_to_sample > 0:
-            personalities = tuple(seeded_random.sample(available_personalities, num_to_sample))
+            personalities = tuple(random.sample(available_personalities, num_to_sample))
         else:
             personalities = ()
     else:
