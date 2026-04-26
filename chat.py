@@ -18,7 +18,7 @@ from aiocache import cached
 from dotenv import load_dotenv
 from openai import AsyncClient
 from PIL import Image
-import easyocr
+from paddleocr import PaddleOCR
 import tools
 
 # from better_profanity import profanity
@@ -361,9 +361,6 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
         response = requests.get(
             url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.2; WOW64) AppleWebKit/534.22 (KHTML, like Gecko) Chrome/55.0.1341.125 Safari/534"
-            },
             stream=True,
             timeout=20,
         )
@@ -440,6 +437,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             model=CHAT_MODEL,  # type: ignore        
         )
         description_content = description_response.choices[0].message.content
+        print(description_content)
 
         match = re.search(r"<DESCRIPTION.*?>(.*?)</DESCRIPTION>", description_content, flags=re.DOTALL | re.IGNORECASE)
         if match is not None:
@@ -451,9 +449,20 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     if not description_content:
         try:
-            reader = easyocr.Reader(["en"])
-            result = reader.readtext(resized_filepath, detail=0, gpu=False)
-            return "\n\n".join(result)
+            ocr = PaddleOCR(
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False
+            )
+            result = ocr.ocr(resized_filepath)
+            content = ""
+            for idx in range(len(result)):
+                res = result[idx]
+                if res is not None:
+                    for line in res:
+                        extracted_text = line[1][0]
+                        markdown_content += f"{extracted_text}\n\n"
+            return content
         except Exception as e:
             logger.error(f"Easyocr error for {url}: {e}")
             return ""
