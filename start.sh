@@ -1,12 +1,13 @@
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-if (uv self version) ; then
+if command -v uv >/dev/null 2>&1; then
+    UV_CMD="uv"
     echo "uv found"
 else
-    echo "uv not found"
-    alias uv="pipx run uv"
+    UV_CMD="pipx run uv"
+    echo "uv not found, using pipx"
 fi
 
-uv sync --link-mode=symlink --upgrade
-uv run --prerelease=if-necessary-or-explicit main.py
+$UV_CMD sync --link-mode=symlink --upgrade
+$UV_CMD run --prerelease=if-necessary-or-explicit main.py
