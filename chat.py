@@ -20,7 +20,6 @@ from openai import AsyncClient
 from PIL import Image
 import easyocr
 import tools
-
 # from better_profanity import profanity
 
 logger = logging.getLogger(__name__)
@@ -568,7 +567,8 @@ async def text_sanitize(text: str) -> str:
     return cleaned_sanitized_text
 
 
-async def get_summary(messages: str) -> str:
+async def get_summary(messages_list: list[dict]) -> str:
+    messages = await message_history_to_xml(messages_list)
     if not messages:
         return ""
 
@@ -603,7 +603,7 @@ async def get_summary(messages: str) -> str:
 
 
 async def should_respond(
-    messages: str,
+    messages: tuple[list[dict], list[dict]],
     last_message_content: str,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
 ) -> bool:
@@ -616,7 +616,7 @@ async def should_respond(
     else:
         personality_summary_desc = personality.get("summary", "A discord chat bot.")
 
-    summary = await get_summary(await message_history_to_xml(messages))
+    summary = await get_summary(messages)
     summary_prompt = (
         f'The summary of the conversations is "{summary}".\n' if summary else ""
     )
@@ -654,7 +654,7 @@ async def should_respond(
 
 
 async def send_response(
-    messages: str,
+    messages: tuple[list[dict], list[dict]],
     message: discord.Message,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
 ) -> list[int]:
@@ -734,7 +734,7 @@ async def send_response(
 
 
 async def get_chat_response(
-    messages: str,
+    messages: tuple[list[dict], list[dict]],
     personality: str,
 ) -> dict:
     if not messages:
@@ -745,6 +745,23 @@ async def get_chat_response(
 
     web_search_result = "<WEB_SEARCH>\n</WEB_SEARCH>"
     if "content" in messages[0]:
+        search_query = await chat_completions_create(
+            messages=[
+                {"role": "system", "content": JAILBREAK_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"""
+                    Your job is to return one web search query for the summary below.
+
+                    ```
+                    {await get_summary(messages)}
+                    ```
+
+                    Return the search query in xml tags called QUERY (e.g. <QUERY>Where do cows sleep at night?</QUERY>)
+                    """.strip()
+                }
+            ]
+        )
         word_count = 0
         web_search_result = "<WEB_SEARCH>\n"
         for result in tools.web_search(messages[0].get("content")):
@@ -795,7 +812,6 @@ async def get_chat_response(
         "\n```"
     )
 
-    client = _get_openai_client()
     try:
         response = await chat_completions_create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
