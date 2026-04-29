@@ -3,7 +3,6 @@ import base64
 import datetime
 import logging
 import os
-import random
 import re
 from typing import Any, Optional
 from functools import lru_cache
@@ -20,7 +19,9 @@ from openai import AsyncClient
 from PIL import Image
 import easyocr
 import tools
+
 # from better_profanity import profanity
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,137 @@ async def chat_completions_create(*args, **kargs):
     raise TypeError
 
 
+async def message_to_dict(past_message: discord.Message, discord_client: discord.Client, image_db: tinydb.TinyDB, personality_name: str, personality_db: tinydb.TinyDB) -> Optional[tuple[dict, int]]:
+    author_name = past_message.author.display_name
+    role = "user"
+    if past_message.author.id == discord_client.application_id:
+        search_results: list[dict] | None = await personality_db.search(tinydb.Query().id == past_message.id)  # type: ignore
+        if search_results and search_results[0].get("name", "bot") != personality_name:
+            role = "other_bot"
+            author_name = search_results[0].get("name", "bot")
+        else:
+            role = "chat_bot"
+            author_name = personality_name
+    elif past_message.author.bot:
+        role = "other_bot"
+
+    content = past_message.content
+
+    bot_mention_pattern = f"<@{discord_client.application_id}>"
+    if content.startswith(bot_mention_pattern):
+        content = content[len(bot_mention_pattern) :].lstrip()
+
+    replacements = []
+    mention_ids_in_message = set()
+    for m in re.finditer(r"<@!?([0-9]+)>", content):
+        mention_ids_in_message.add(int(m.group(1)))
+
+    for mid in mention_ids_in_message:
+        mention_pattern_user = f"<@{mid}>"
+        mention_pattern_nick = f"<@!{mid}>"
+        if past_message.author.id == discord_client.application_id:
+            replacement_text = "chat_bot"
+        else:
+            try:
+                at_user = await discord_client.fetch_user(mid)  # TODO: add caching
+                replacement_text = at_user.display_name
+            except discord.NotFound:
+                logger.warning(f"Could not fetch user for mention ID: {mid}")
+                replacement_text = "deleted_user"
+            except Exception as e:
+                logger.error(f"Error fetching user for mention ID {mid}: {e}")
+                replacement_text = "unknown_user"
+
+        replacements.append((mention_pattern_user, replacement_text))
+        replacements.append((mention_pattern_nick, replacement_text))
+
+    for pattern, replacement in replacements:
+        content = content.replace(pattern, replacement)
+
+    current_char_count = 0
+
+    image_markdown = []
+    if not FILTER_IMAGES and (len(past_message.attachments) + len(past_message.embeds)) > 0 and (MAX_HISTORY_CHARACTERS - current_char_count) > 0:
+        for attachment in past_message.attachments:
+            try:
+                description = await asyncio.wait_for(image_describe(attachment.url, image_db), timeout=60)
+                if description:
+                    image_markdown.append(description)
+                    current_char_count += len(description)
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout describing image: {attachment.url}")
+            except Exception as e:
+                logger.error(f"Error describing image {attachment.url}: {e}")
+
+        for embed in past_message.embeds:
+            if embed.thumbnail and embed.thumbnail.proxy_url:
+                try:
+                    description = await asyncio.wait_for(
+                        image_describe(embed.thumbnail.proxy_url, image_db),
+                        timeout=60,
+                    )
+                    if description:
+                        image_markdown.append(description)
+                        current_char_count += len(description)
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout describing image embed: {embed.thumbnail.proxy_url}")
+                except Exception as e:
+                    logger.error(f"Error describing image embed {embed.thumbnail.proxy_url}: {e}")
+
+    if isinstance(past_message.created_at, datetime.datetime):
+        dt_object = past_message.created_at
+    else:
+        dt_object = datetime.datetime.fromtimestamp(past_message.created_at.timestamp())
+
+    if len(content) == 0 and len(image_markdown) == 0:
+        return None
+
+    mentions_ids = list(map(lambda x: x.id, past_message.mentions))
+    mentions = []
+    for ids in mentions_ids:
+        if ids == discord_client.application_id:
+            mentions.append("chat_bot")
+        else:
+            try:
+                mentions.append((await discord_client.fetch_user(ids)).display_name)
+            except Exception as _:
+                pass
+
+    mentions = sorted(set(mentions))
+
+    poll: Optional[dict[str, Any]] = None
+    if past_message.poll is not None:
+        message_poll: discord.Poll = past_message.poll
+        poll = {}
+        if message_poll.expires_at is not None:
+            poll["time_left"] = message_poll.expires_at.minute
+
+        poll["question"] = message_poll.question
+
+        poll["answers"] = list(map(str, message_poll.answers))
+
+        poll["total_votes"] = message_poll.total_votes
+
+        if message_poll.victor_answer is not None:
+            poll["victor_answer"] = str(message_poll.victor_answer)
+            poll["victor_votes"] = message_poll.victor_answer.vote_count
+
+        poll["is_done"] = "yes" if message_poll.is_finalised() else "no"
+
+    message_data = {
+        "type": role,
+        "content": content.strip(),
+        "author_name": author_name,
+        "author_id": past_message.author.id,
+        "time": dt_object,
+        "images": image_markdown,
+        "mentions": mentions,
+        "poll": poll,
+    }
+
+    return message_data, len(str(message_data)) + current_char_count
+
+
 async def messages_from_history(
     past_messages: list[discord.Message],
     message_create_at: int,
@@ -117,143 +249,25 @@ async def messages_from_history(
     message_history_to_compress = []
     current_char_count = 0
 
-    for past_message in past_messages[::-1]:
-        author_name = past_message.author.display_name
-        role = "user"
-        if past_message.author.id == discord_client.application_id:
-            search_results: list[dict] | None = await personality_db.search(tinydb.Query().id == past_message.id)  # type: ignore
-            if search_results and search_results[0].get("name", "bot") != personality_name:
-                role = "other_bot"
-                author_name = search_results[0].get("name", "bot")
-            else:
-                role = "chat_bot"
-                author_name = personality_name
-        elif past_message.author.bot:
-            role = "other_bot"
-
-        content = past_message.content
-
-        bot_mention_pattern = f"<@{discord_client.application_id}>"
-        if content.startswith(bot_mention_pattern):
-            content = content[len(bot_mention_pattern) :].lstrip()
-
-        replacements = []
-        mention_ids_in_message = set()
-        for m in re.finditer(r"<@!?([0-9]+)>", content):
-            mention_ids_in_message.add(int(m.group(1)))
-
-        for mid in mention_ids_in_message:
-            mention_pattern_user = f"<@{mid}>"
-            mention_pattern_nick = f"<@!{mid}>"
-            if past_message.author.id == discord_client.application_id:
-                replacement_text = "chat_bot"
-            else:
-                try:
-                    at_user = await discord_client.fetch_user(mid)  # TODO: add caching
-                    replacement_text = at_user.display_name
-                except discord.NotFound:
-                    logger.warning(f"Could not fetch user for mention ID: {mid}")
-                    replacement_text = "deleted_user"
-                except Exception as e:
-                    logger.error(f"Error fetching user for mention ID {mid}: {e}")
-                    replacement_text = "unknown_user"
-
-            replacements.append((mention_pattern_user, replacement_text))
-            replacements.append((mention_pattern_nick, replacement_text))
-
-        for pattern, replacement in replacements:
-            content = content.replace(pattern, replacement)
-
-        image_markdown = []
-        if not FILTER_IMAGES and (len(past_message.attachments) + len(past_message.embeds)) > 0 and (MAX_HISTORY_CHARACTERS - current_char_count) > 0:
-            for attachment in past_message.attachments:
-                try:
-                    description = await asyncio.wait_for(image_describe(attachment.url, image_db), timeout=60)
-                    if description:
-                        image_markdown.append(description)
-                        current_char_count += len(description)
-                except asyncio.TimeoutError:
-                    logger.error(f"Timeout describing image: {attachment.url}")
-                except Exception as e:
-                    logger.error(f"Error describing image {attachment.url}: {e}")
-
-            for embed in past_message.embeds:
-                if embed.thumbnail and embed.thumbnail.proxy_url:
-                    try:
-                        description = await asyncio.wait_for(
-                            image_describe(embed.thumbnail.proxy_url, image_db),
-                            timeout=60,
-                        )
-                        if description:
-                            image_markdown.append(description)
-                            current_char_count += len(description)
-                    except asyncio.TimeoutError:
-                        logger.error(f"Timeout describing image embed: {embed.thumbnail.proxy_url}")
-                    except Exception as e:
-                        logger.error(f"Error describing image embed {embed.thumbnail.proxy_url}: {e}")
-
-        if isinstance(past_message.created_at, datetime.datetime):
-            dt_object = past_message.created_at
-        else:
-            dt_object = datetime.datetime.fromtimestamp(past_message.created_at.timestamp())
-
-        if len(content) == 0 and len(image_markdown) == 0:
+    message_datas = [message_to_dict(pm, discord_client, image_db, personality_name, personality_db) for pm in past_messages[::-1]]
+    for co_data in message_datas:
+        data = await co_data
+        if data is None:
             continue
+        dict_, tokens = data
 
-        mentions_ids = list(map(lambda x: x.id, past_message.mentions))
-        mentions = []
-        for ids in mentions_ids:
-            if ids == discord_client.application_id:
-                mentions.append("chat_bot")
-            else:
-                try:
-                    mentions.append((await discord_client.fetch_user(ids)).display_name)
-                except Exception as _:
-                    pass
-
-        mentions = sorted(set(mentions))
-
-        poll: Optional[dict[str, Any]] = None
-        if past_message.poll is not None:
-            message_poll: discord.Poll = past_message.poll
-            poll = {}
-            if message_poll.expires_at is not None:
-                poll["time_left"] = message_poll.expires_at.minute
-
-            poll["question"] = message_poll.question
-
-            poll["answers"] = list(map(str, message_poll.answers))
-
-            poll["total_votes"] = message_poll.total_votes
-
-            if message_poll.victor_answer is not None:
-                poll["victor_answer"] = str(message_poll.victor_answer)
-                poll["victor_votes"] = message_poll.victor_answer.vote_count
-
-            poll["is_done"] = "yes" if message_poll.is_finalised() else "no"
-
-        message_data = {
-            "type": role,
-            "content": content.strip(),
-            "author_name": author_name,
-            "author_id": past_message.author.id,
-            "time": dt_object,
-            "images": image_markdown,
-            "mentions": mentions,
-            "poll": poll,
-        }
-
-        current_char_count += len(str(message_data))
+        current_char_count += tokens
         if current_char_count <= MAX_HISTORY_CHARACTERS:
-            message_history.append(message_data)
+            message_history.append(dict_)
         elif current_char_count > MAX_HISTORY_CHARACTERS * 3:
             break
         elif current_char_count > MAX_HISTORY_CHARACTERS * (len(message_history_to_compress) + 1):
             message_history_to_compress.append([])
-            message_history_to_compress[-1].append(message_data)
+            message_history_to_compress[-1].append(dict_)
         else:
-            message_history_to_compress[-1].append(message_data)
+            message_history_to_compress[-1].append(dict_)
 
+    gc.collect()
     return message_history, message_history_to_compress
 
 
@@ -436,100 +450,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         await image_db.insert({"description": description_content, "hash": img_hash})
         logger.info(f"Cached new description for image {url} (hash: {img_hash})")
 
-    return await tools.clear_text(description_content)
-
-
-@cached(ttl=3600)
-async def text_summary(text: str) -> str:
-    TextQuery = tinydb.Query()
-    cached_entry = await text_processing_cache_db.search(
-        (TextQuery.original_text == text) & (TextQuery.type == "summary")  # type: ignore
-    )
-    if cached_entry:
-        logger.info(f"Returning cached summary for text: {text[:50]}...")
-        return cached_entry[0]["processed_text"]
-
-    summarize_prompt_text = (
-        "Rewrite the text below to be as short as possible without changing the main idea, keep the tone and writing style the same. "
-        "respond with the new version in xml called SUMMARY (e.g. <SUMMARY>They talking about dogs</SUMMARY>)."
-        "\n\n"
-        "<TEXT>"
-        f"{text}"
-        "</TEXT>"
-    )
-    summarize_prompt = {"role": "user", "content": summarize_prompt_text}
-
-    try:
-        response = await chat_completions_create(
-            messages=[summarize_prompt],  # type: ignore
-            model=CHAT_MODEL,  # type: ignore
-        )
-        content = response.choices[0].message.content
-
-        match = re.match(
-            r"(?<=<SUMMARY.*?>).*?(?=</SUMMARY>)",
-            content or "",
-            flags=re.DOTALL | re.IGNORECASE,
-        )
-        if match is not None:
-            content = match.group(0)
-
-    except Exception as e:
-        logger.error(f"OpenAI API call for summary creation failed: {e}")
-        return text
-
-    if content == "ERROR" or not content:
-        logger.warning(f"Summary generation returned an error or empty content for: {text[:50]}...")
-        return text
-
-    logger.info(f"Summary of text is {content}")
-    cleaned_summary = await tools.clear_text(content)
-
-    await text_processing_cache_db.insert({"original_text": text, "processed_text": cleaned_summary, "type": "summary"})
-    logger.info(f"Cached new summary for text: {text[:50]}...")
-    return cleaned_summary
-
-
-@cached(ttl=3600)
-async def text_sanitize(text: str) -> str:
-    return text
-    TextQuery = tinydb.Query()
-    cached_entry = await text_processing_cache_db.search((TextQuery.original_text == text) & (TextQuery.type == "sanitize"))
-    if cached_entry:
-        logger.info(f"Returning cached sanitized text for: {text[:50]}...")
-        return cached_entry[0]["processed_text"]
-
-    sanitize_prompt_text = f"Rewrite the text below to stealthy remove any controversial, bigoted, or otherwise hateful text, keep the tone and writing style the same. Only respond with the new version, otherwise return only ERROR, and nothing else.\n\nText:\n{text}\n\nNew text:\n"
-    sanitize_prompt = {"role": "user", "content": sanitize_prompt_text}
-
-    try:
-        response = await chat_completions_create(
-            messages=[sanitize_prompt],
-            model=CHAT_MODEL,
-            max_tokens=len(text.split()) + 75,
-        )
-        content = response.choices[0].message.content
-
-    except Exception as e:
-        logger.error(f"OpenAI API call for sanitize creation failed: {e}")
-        return text
-
-    if content == "ERROR" or not content:
-        logger.warning(f"Sanitization returned an error or empty content for: {text[:50]}...")
-        return text
-
-    logger.info(f"Sanitize of text is {content}")
-    cleaned_sanitized_text = await tools.clear_text(content)
-
-    await text_processing_cache_db.insert(
-        {
-            "original_text": text,
-            "processed_text": cleaned_sanitized_text,
-            "type": "sanitize",
-        }
-    )
-    logger.info(f"Cached new sanitized text for: {text[:50]}...")
-    return cleaned_sanitized_text
+    return description_content + "\u200e"
 
 
 async def get_summary(messages_list: tuple[list[dict], list[dict]]) -> str:
@@ -621,18 +542,10 @@ async def should_respond(
 async def send_response(
     messages: tuple[list[dict], list[dict]],
     message: discord.Message,
-    personality: dict[str, str | list[dict[str, str]]] | None = None,
+    personality: dict | None = None,
 ) -> list[int] | None:
-    if personality is None:
-        current_personality = ""
-    else:
-        current_personality = [m for m in personality.get("messages", []) if isinstance(m, dict) and m.get("role", "") == "system"]
-        if len(current_personality) == 0:
-            current_personality = ""
-        elif isinstance(current_personality[0], str):
-            current_personality = current_personality[0].get("content", "A discord chat bot.")
 
-    to_send = await get_chat_response(messages, str(current_personality))
+    to_send = await get_chat_response(messages, personality if personality else {})
 
     if "content" not in to_send:
         logger.error(f"'content' key missing from AI response. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
@@ -646,7 +559,7 @@ async def send_response(
         asyncio.create_task(message.clear_reactions())
         return None
 
-    message_response_cleaned = await tools.clear_text(message_response_raw)
+    message_response_cleaned = message_response_raw + "\u200e"
     message_response_final = await tools.remove_latex(message_response_cleaned)
 
     message_response_split = await tools.smart_text_splitter(message_response_final)
@@ -696,7 +609,7 @@ async def send_response(
 
 async def get_chat_response(
     messages: tuple[list[dict], list[dict]],
-    personality: str,
+    personality: dict,
 ) -> dict:
     if not messages:
         logger.info("get_chat_response called with no messages, returning empty string.")
@@ -704,45 +617,54 @@ async def get_chat_response(
 
     web_search_result = "<WEB_SEARCH>\n</WEB_SEARCH>"
     if messages[0] and messages[0][0] and "content" in messages[0][0]:
-        search_query = await chat_completions_create(
-            messages=[
-                {"role": "system", "content": JAILBREAK_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"""
-                    Your job is to return one web search query for the summary below.
+        search_query = messages[0][0]["content"]
+        try:
+            search_response = await chat_completions_create(
+                messages=[
+                    {"role": "system", "content": JAILBREAK_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": f"""
+                        Your job is to return one web search query for the summary below.
 
-                    ```
-                    {await get_summary(messages)}
-                    ```
+                        ```
+                        {await get_summary(messages)}
+                        ```
 
-                    Return the search query in xml tags called QUERY (e.g. <QUERY>Where do cows sleep at night?</QUERY>)
-                    """.strip(),
-                },
-            ]
-        )
+                        Return the search query in xml tags called QUERY (e.g. <QUERY>Where do cows sleep at night?</QUERY>)
+                        """.strip(),
+                    },
+                ]
+            )
+
+            content = search_response.choices[0].message.content
+            assert type(content) is str
+            re_content = re.findall(r"<QUERY>.+?<\/QUERY>", content, flags=re.DOTALL | re.IGNORECASE)
+            if not re_content:
+                search_query = re_content[-1]
+        except Exception as e:
+            logger.error(f"OpenAI API call for get_chat_response query failed: {e}")
+
         word_count = 0
         web_search_result = "<WEB_SEARCH>\n"
-        for result in tools.web_search(messages[0][0].get("content", "")):
+        for result in tools.web_search(search_query):
             if word_count > 500:
                 continue
             word_count += len(result.split())
             web_search_result += f"<RESULT>\n{result}\n</RESULT>\n"
         web_search_result += "</WEB_SEARCH>"
 
-    personality_str = personality
+    personality_str = personality.get("content", "A discord chat bot.")
     personality_str = f"<PERSONALITY>{personality_str}</PERSONALITY>"
     messages_with_systems = (
         "You are a chat bot for a social media platform.\n"
         "Your job is to respond to the messages they way a bot with the personality in the **PERSONALITY** tags would.\n"
         "When you see `chat_bot` that is you.\n"
-        # "You can mention people by `<@user_id>`, where user id is there id, (so if there id is `10`, then the mention would look like `<@10>`)."
         # TODO: ats should be in the form: `<@user_id>`, We need to convert names to ids.
         "You can mention people by `<@USER_NAME>`, where USER_NAME is their USER_NAME, (so if there id name `steve`, then the mention would look like `<@steve>`).\n"
         "The messages are in xml format,\n"
         " - **PAST_SUMMARY** is the summary of the conversation before the current one\n"
         " - **TYPE** is the type of author (`chat_bot` (you), `user`, or `other_bot`)\n"
-        # " - **USER_ID** is the id of the author\n"
         " - **USER_NAME** is the name of the author (NOTE: your name might not be `chat_bot`)\n"
         " - **TIME** is when the message was sent\n"
         " - **MENTIONS** is a list of users mentioned in the message (`chat_bot` is you)\n"
@@ -770,6 +692,8 @@ async def get_chat_response(
         f"{await message_history_to_xml(messages)}"
         "\n```"
     )
+
+    # print(messages_with_systems)
 
     try:
         response = await chat_completions_create(

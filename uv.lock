@@ -718,18 +718,6 @@ wheels = [
 ]
 
 [[package]]
-name = "glin-profanity"
-version = "3.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/a3/8b29749b34d7307d4cee3418dddd8923f286dcc810b49fb4f3a8155a4520/glin_profanity-3.3.0.tar.gz", hash = "sha256:c1b4c289612adc1f4783284158bc23c12b441cb856c06db4d424faafc942e4a4", size = 40698, upload-time = "2026-01-31T22:08:33.565Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/ad/83f74b956e313bbecd9504d4e21834730224892dbccb5127249de43123a9/glin_profanity-3.3.0-py3-none-any.whl", hash = "sha256:1716980f467c3f906cb5be3ae11d179c32676107076a417142adeefd2800999f", size = 49768, upload-time = "2026-01-31T22:08:34.891Z" },
-]
-
-[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2286,7 +2274,6 @@ dependencies = [
     { name = "fastembed" },
     { name = "ffmpeg-python" },
     { name = "flatlatex" },
-    { name = "glin-profanity" },
     { name = "imagehash" },
     { name = "msgspec" },
     { name = "networkx" },
@@ -2317,7 +2304,6 @@ requires-dist = [
     { name = "fastembed", specifier = ">=0.8.0" },
     { name = "ffmpeg-python" },
     { name = "flatlatex" },
-    { name = "glin-profanity", specifier = ">=3.3.0" },
     { name = "imagehash" },
     { name = "msgspec" },
     { name = "msgspec", specifier = "!=0.18.6" },

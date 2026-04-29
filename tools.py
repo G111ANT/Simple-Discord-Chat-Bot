@@ -1,21 +1,18 @@
-import asyncio
 import logging
 import random
-from asyncio import sleep
 import tempfile
-import functools
 import time
 
 import aiofiles
 import flatlatex
 import ujson
-import glin_profanity
 import requests
 import wikipedia
 import os
 import difflib
 
 logger = logging.getLogger(__name__)
+
 
 # https://stackoverflow.com/questions/70640701/python-logger-limit-string-size
 class NotTooLongStringFormatter(logging.Formatter):
@@ -275,105 +272,6 @@ async def model_text_replace(text: str, replace_str: str) -> str:
     return text
 
 
-def profanity_chunker(words: list[str], prof_filter: glin_profanity.Filter) -> list[bool]:
-    len_words = len(words)
-    if len_words == 1:
-        return [prof_filter.is_profane(words[0])]
-    is_bad: list[bool] = []
-    half = len_words // 2
-    if prof_filter.is_profane(" ".join(words[:half])):
-        left_is_bad = profanity_chunker(words[:half], prof_filter)
-        if all([not i for i in left_is_bad]):
-            is_bad.extend([True for _ in range(half)])
-        else:
-            is_bad.extend(left_is_bad)
-    else:
-        is_bad.extend([False for _ in range(half)])
-
-    if prof_filter.is_profane(" ".join(words[half:])):
-        right_is_bad = profanity_chunker(words[half:], prof_filter)
-        if all([not i for i in right_is_bad]):
-            is_bad.extend([True for _ in range(len_words - half)])
-        else:
-            is_bad.extend(right_is_bad)
-    else:
-        is_bad.extend([False for _ in range(len_words - half)])
-
-    assert len(is_bad) == len_words
-
-    return is_bad
-
-
-async def clear_text(string: str) -> str:
-    """
-    censoring profanity.
-
-    Profane words are wrapped in Discord spoiler tags (||word||).
-    If the string becomes empty after cleaning, a zero-width space is returned.
-
-    Args:
-        string (str): The string to clean.
-
-    Returns:
-        str: The cleaned string.
-
-    Doctests:
-    >>> import asyncio
-    >>>
-    >>> asyncio.run(clear_text("This is a damn test."))
-    'This is a ||damn|| test.'
-    >>> asyncio.run(clear_text("Clean string."))
-    'Clean string.'
-    >>> asyncio.run(clear_text("  leading and trailing spaces  "))
-    'leading and trailing spaces'
-    >>> asyncio.run(clear_text(""))
-    '\\u200e'
-    """
-    return string + "\u200e"
-
-    logger.info(f"Cleaning text. Input snippet: {string[:100]}...")
-
-    words = string.split(" ")
-    processed_words: list[str] = []
-    prof_filter = glin_profanity.Filter()
-
-    is_bad = profanity_chunker(words, prof_filter)
-
-    processed_words.append(words[0])
-    if is_bad[0]:
-        processed_words[0] = f"||{processed_words[0].strip('|')}"
-        if len(words) >= 1 and not is_bad[2]:
-            processed_words[0] = f"{processed_words[0]}||"
-
-    for i in range(1, len(words) - 1):
-        processed_words.append(words[i])
-
-        if not is_bad[i]:
-            continue
-
-        processed_words[-1] = processed_words[-1].strip("|")
-        if not is_bad[i - 1]:
-            processed_words[-1] = f"||{processed_words[-1]}"
-
-        if not is_bad[i + 1]:
-            processed_words[-1] = f"{processed_words[-1]}||"
-
-    processed_words.append(words[-1])
-    if is_bad[-1]:
-        processed_words[-1] = f"{processed_words[-1].strip('|')}||"
-        if len(words) >= 1 and not is_bad[-2]:
-            processed_words[-1] = f"{processed_words[-1]}||"
-
-    cleaned_string = " ".join(processed_words)
-
-    cleaned_string = cleaned_string.strip()
-
-    if not cleaned_string:
-        cleaned_string = "\u200e"
-
-    return cleaned_string
-
-
 PERSONALITY_FILE_PATH = "./config/personality.json"
 
 # Module-level variable to store the personalities
@@ -384,41 +282,6 @@ PersonalitiesTuple = tuple[PersonalityDict, ...]
 # Initialize personalities as None to indicate it hasn't been loaded/set.
 personalities: PersonalitiesTuple | None = None
 last_time: float | None = None
-
-
-def non_async_get_personalties() -> PersonalitiesTuple:
-    """
-    Synchronously loads personalities from the personality JSON file.
-
-    Reads the personality configuration file, parses the JSON, and returns
-    the 'systems' list as a tuple of personality dictionaries.
-    Logs errors if the file is not found, improperly formatted, or if
-    other issues occur during reading.
-
-    Returns:
-        PersonalitiesTuple: A tuple of personality dictionaries.
-                            Returns an empty tuple if loading fails.
-    """
-    try:
-        with open(PERSONALITY_FILE_PATH, "r", encoding="utf-8") as file:
-            data = ujson.load(file)
-            systems = data.get("systems", [])
-            if not isinstance(systems, list):
-                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list.")
-                return ()
-            if not all(isinstance(item, dict) for item in systems):
-                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries.")
-                return ()
-            return tuple(systems)
-    except FileNotFoundError:
-        logger.error(f"Personality file not found: {PERSONALITY_FILE_PATH}")
-        return ()
-    except (ujson.JSONDecodeError, KeyError) as e:
-        logger.error(f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}")
-        return ()
-    except Exception as e:
-        logger.error(f"Unexpected error reading personalities: {e}")
-        return ()
 
 
 async def get_personalties() -> PersonalitiesTuple:

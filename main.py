@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 import chat
 import tools
-import time
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +229,7 @@ if __name__ == "__main__":
             personality_db,
         )
 
+        gc.collect()
         if not message_history:
             logger.info("Message history is empty after processing, not responding.")
             return
