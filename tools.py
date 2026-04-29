@@ -559,7 +559,6 @@ async def get_personality(k: int = 6) -> PersonalitiesTuple:
 
 def web_search(query: str) -> list[str]:
     logger.info("Searching web")
-    # https://searxng.chrisjas.party/search?q=dogs
     results = []
     try:
         params = {
