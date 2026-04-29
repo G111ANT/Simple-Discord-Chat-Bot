@@ -35,10 +35,8 @@ MAX_TOKENS_STR = os.environ.get("SIMPLE_CHAT_MAX_TOKENS", "4096")
 try:
     MAX_HISTORY_CHARACTERS = (float(MAX_TOKENS_STR) // 4) * 3
 except ValueError:
-    MAX_HISTORY_CHARACTERS = (4096 // 4)  * 3
-    logger.error(
-        f"Invalid SIMPLE_CHAT_MAX_TOKENS value: {MAX_TOKENS_STR}. Defaulting to {MAX_HISTORY_CHARACTERS} characters."
-    )
+    MAX_HISTORY_CHARACTERS = (4096 // 4) * 3
+    logger.error(f"Invalid SIMPLE_CHAT_MAX_TOKENS value: {MAX_TOKENS_STR}. Defaulting to {MAX_HISTORY_CHARACTERS} characters.")
 
 FILTER_IMAGES = os.environ.get("SIMPLE_CHAT_FILTER_IMAGES", "false").lower() in (
     "true",
@@ -58,6 +56,7 @@ JAILBREAK_SYSTEM_PROMPT = (
 TEXT_PROCESSING_CACHE_DB_PATH = "./db/text_processing_cache.json"
 text_processing_cache_db = tinydb.TinyDB(TEXT_PROCESSING_CACHE_DB_PATH)
 
+
 @lru_cache(32)
 def _get_openai_client() -> AsyncClient:
     if not os.environ.get("SIMPLE_CHAT_OPENAI_KEY"):
@@ -65,7 +64,7 @@ def _get_openai_client() -> AsyncClient:
         raise ValueError("SIMPLE_CHAT_OPENAI_KEY environment variable not set.")
     return AsyncClient(
         api_key=os.environ.get("SIMPLE_CHAT_OPENAI_KEY"),
-        base_url=os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL")
+        base_url=os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL"),
     )
 
 
@@ -76,7 +75,10 @@ def _get_openai_client_fallback_() -> AsyncClient:
         return _get_openai_client()
     return AsyncClient(
         api_key=os.environ.get("SIMPLE_CHAT_OPENAI_KEY_FALLBACK", os.environ.get("SIMPLE_CHAT_OPENAI_KEY")),
-        base_url=os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL_FALLBACK", os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL"))
+        base_url=os.environ.get(
+            "SIMPLE_CHAT_OPENAI_BASE_URL_FALLBACK",
+            os.environ.get("SIMPLE_CHAT_OPENAI_BASE_URL"),
+        ),
     )
 
 
@@ -84,28 +86,23 @@ async def chat_completions_create(*args, **kargs):
     for _ in range(3):
         try:
             kargs["model"] = os.environ.get("SIMPLE_CHAT_CHAT_MODEL")
-            response = await _get_openai_client().chat.completions.create(
-                *args,
-                **kargs
-            )
+            response = await _get_openai_client().chat.completions.create(*args, **kargs)
             _ = response.choices[0].message.content
             return response
         except Exception as e:
             logger.error(f"openai failed with {e}")
-        
+
         if os.environ.get("SIMPLE_CHAT_CHAT_MODEL_FALLBACK") is not None:
             try:
                 kargs["model"] = os.environ.get("SIMPLE_CHAT_CHAT_MODEL_FALLBACK")
-                response = await _get_openai_client_fallback_().chat.completions.create(
-                    *args,
-                    **kargs
-                )
+                response = await _get_openai_client_fallback_().chat.completions.create(*args, **kargs)
                 _ = response.choices[0].message.content
                 return response
             except Exception as e:
                 logger.error(f"openai failed with {e}")
-    
+
     raise TypeError
+
 
 async def messages_from_history(
     past_messages: list[discord.Message],
@@ -124,7 +121,7 @@ async def messages_from_history(
         author_name = past_message.author.display_name
         role = "user"
         if past_message.author.id == discord_client.application_id:
-            search_results = await personality_db.search(tinydb.Query().id == past_message.id)
+            search_results: list[dict] | None = await personality_db.search(tinydb.Query().id == past_message.id)  # type: ignore
             if search_results and search_results[0].get("name", "bot") != personality_name:
                 role = "other_bot"
                 author_name = search_results[0].get("name", "bot")
@@ -152,7 +149,7 @@ async def messages_from_history(
                 replacement_text = "chat_bot"
             else:
                 try:
-                    at_user = await discord_client.fetch_user(mid) # TODO: add caching
+                    at_user = await discord_client.fetch_user(mid)  # TODO: add caching
                     replacement_text = at_user.display_name
                 except discord.NotFound:
                     logger.warning(f"Could not fetch user for mention ID: {mid}")
@@ -168,16 +165,10 @@ async def messages_from_history(
             content = content.replace(pattern, replacement)
 
         image_markdown = []
-        if (
-            not FILTER_IMAGES
-            and (len(past_message.attachments) + len(past_message.embeds)) > 0
-            and (MAX_HISTORY_CHARACTERS - current_char_count) > 0
-        ):
+        if not FILTER_IMAGES and (len(past_message.attachments) + len(past_message.embeds)) > 0 and (MAX_HISTORY_CHARACTERS - current_char_count) > 0:
             for attachment in past_message.attachments:
                 try:
-                    description = await asyncio.wait_for(
-                        image_describe(attachment.url, image_db), timeout=60
-                    )
+                    description = await asyncio.wait_for(image_describe(attachment.url, image_db), timeout=60)
                     if description:
                         image_markdown.append(description)
                         current_char_count += len(description)
@@ -197,20 +188,14 @@ async def messages_from_history(
                             image_markdown.append(description)
                             current_char_count += len(description)
                     except asyncio.TimeoutError:
-                        logger.error(
-                            f"Timeout describing image embed: {embed.thumbnail.proxy_url}"
-                        )
+                        logger.error(f"Timeout describing image embed: {embed.thumbnail.proxy_url}")
                     except Exception as e:
-                        logger.error(
-                            f"Error describing image embed {embed.thumbnail.proxy_url}: {e}"
-                        )
+                        logger.error(f"Error describing image embed {embed.thumbnail.proxy_url}: {e}")
 
         if isinstance(past_message.created_at, datetime.datetime):
             dt_object = past_message.created_at
         else:
-            dt_object = datetime.datetime.fromtimestamp(
-                past_message.created_at.timestamp()
-            )
+            dt_object = datetime.datetime.fromtimestamp(past_message.created_at.timestamp())
 
         if len(content) == 0 and len(image_markdown) == 0:
             continue
@@ -263,9 +248,7 @@ async def messages_from_history(
             message_history.append(message_data)
         elif current_char_count > MAX_HISTORY_CHARACTERS * 3:
             break
-        elif current_char_count > MAX_HISTORY_CHARACTERS * (
-            len(message_history_to_compress) + 1
-        ):
+        elif current_char_count > MAX_HISTORY_CHARACTERS * (len(message_history_to_compress) + 1):
             message_history_to_compress.append([])
             message_history_to_compress[-1].append(message_data)
         else:
@@ -279,20 +262,18 @@ async def message_history_to_xml(history: tuple[list[dict], list[dict]]) -> str:
     final_data = ""
 
     if len(message_history_to_compress) > 0:
-        for history in message_history_to_compress:
+        for history_chunk in message_history_to_compress:
             final_summary_data = ""
-            for message in history[::-1]:
+            for message in history_chunk[::-1]:
                 final_summary_data += "<MESSAGE>\n"
 
-                final_data += message_to_xml(message)
+                final_summary_data += message_to_xml(message)
 
                 final_summary_data += "</MESSAGE>\n"
 
-            summary_of_older_messages = await get_summary(final_summary_data)
+            summary_of_older_messages = await get_summary((history_chunk, []))  # type: ignore
             if summary_of_older_messages:
-                final_data += (
-                    f"<PAST_SUMMARY>\n{summary_of_older_messages}\n</PAST_SUMMARY>\n"
-                )
+                final_data += f"<PAST_SUMMARY>\n{summary_of_older_messages}\n</PAST_SUMMARY>\n"
         final_data += "\n"
 
     for message in message_history[::-1]:
@@ -303,6 +284,7 @@ async def message_history_to_xml(history: tuple[list[dict], list[dict]]) -> str:
         final_data += "</MESSAGE>\n"
 
     return final_data.strip()
+
 
 def message_to_xml(message: dict) -> str:
     final_data = ""
@@ -319,19 +301,13 @@ def message_to_xml(message: dict) -> str:
 
     if message["poll"] is not None:
         final_data += "<POLL>\n"
-        final_data += (
-            f"    <QUESTION>{message['poll']['question']} Minutes</QUESTION>\n"
-        )
+        final_data += f"    <QUESTION>{message['poll']['question']} Minutes</QUESTION>\n"
         if "time_left" in message["poll"]:
-            final_data += (
-                f"    <TIME_LEFT>{message['poll']['time_left']} Minutes</TIME_LEFT>\n"
-            )
+            final_data += f"    <TIME_LEFT>{message['poll']['time_left']} Minutes</TIME_LEFT>\n"
         final_data += f"    <IS_DONE>{message['poll']['is_done']} Minutes</IS_DONE>\n"
         for answer in message["poll"]["answer"]:
             final_data += f"<ANSWER>{answer} Minutes</ANSWER>\n"
-        final_data += (
-            f"<TOTAL_VOTES>{message['poll']['total_votes']} Minutes</TOTAL_VOTES>\n"
-        )
+        final_data += f"<TOTAL_VOTES>{message['poll']['total_votes']} Minutes</TOTAL_VOTES>\n"
         if "victor_answer" in message["poll"]:
             final_data += f"<VICTOR_ANSWER>{message['poll']['victor_answer']} Minutes</VICTOR_ANSWER>\n"
             final_data += f"<VICTOR_VOTES>{message['poll']['victor_votes']} Minutes</VICTOR_VOTES>\n"
@@ -383,9 +359,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         logger.error(f"Request for image {url} failed: {e}")
         return ""
     except PIL.UnidentifiedImageError:
-        logger.error(
-            f"Could not open or read image file from {url} (downloaded to {original_filepath})"
-        )
+        logger.error(f"Could not open or read image file from {url} (downloaded to {original_filepath})")
         return ""
     except Exception as e:
         logger.error(f"Error processing image {url}: {e}")
@@ -409,9 +383,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         logger.info(f"Found cached description for image {url} (hash: {img_hash})")
         return search_results[0].get("description", "")
 
-    logger.info(
-        f"No cache found for image {url} (hash: {img_hash}). Requesting AI description."
-    )
+    logger.info(f"No cache found for image {url} (hash: {img_hash}). Requesting AI description.")
     client = _get_openai_client()
     try:
         description_response = await chat_completions_create(
@@ -426,19 +398,21 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
                         },
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
-                            },
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
                         },
                     ],
                 }
             ],  # type: ignore
-            model=CHAT_MODEL,  # type: ignore        
+            model=CHAT_MODEL,  # type: ignore
         )
         description_content = description_response.choices[0].message.content
         print(description_content)
 
-        match = re.search(r"<DESCRIPTION.*?>(.*?)</DESCRIPTION>", description_content, flags=re.DOTALL | re.IGNORECASE)
+        match = re.search(
+            r"<DESCRIPTION.*?>(.*?)</DESCRIPTION>",
+            description_content or "",
+            flags=re.DOTALL | re.IGNORECASE,
+        )
         if match is not None:
             description_content = match.group(0)
 
@@ -449,17 +423,13 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     if not description_content:
         try:
             reader = easyocr.Reader(["en"])
-            result = reader.readtext(resized_filepath, detail=0, gpu=False)
-            return "\n\n".join(result)
+            result = reader.readtext(resized_filepath, detail=0)  # type: ignore
+            return "\n\n".join(result)  # type: ignore
         except Exception as e:
             logger.error(f"Easyocr error for {url}: {e}")
             return ""
 
-    description_content = "".join(
-        filter(
-            lambda x: x.isalnum() or x.isspace() or x == "'", list(description_content)
-        )
-    ).strip()
+    description_content = "".join(filter(lambda x: x.isalnum() or x.isspace() or x == "'", list(description_content))).strip()
     description_content = re.sub(r"\s+", " ", description_content)
 
     if img_hash and description_content:
@@ -493,11 +463,14 @@ async def text_summary(text: str) -> str:
         response = await chat_completions_create(
             messages=[summarize_prompt],  # type: ignore
             model=CHAT_MODEL,  # type: ignore
-            
         )
         content = response.choices[0].message.content
 
-        match = re.match(r"(?<=<SUMMARY.*?>).*?(?=</SUMMARY>)", content, flags=re.DOTALL | re.IGNORECASE)
+        match = re.match(
+            r"(?<=<SUMMARY.*?>).*?(?=</SUMMARY>)",
+            content or "",
+            flags=re.DOTALL | re.IGNORECASE,
+        )
         if match is not None:
             content = match.group(0)
 
@@ -506,17 +479,13 @@ async def text_summary(text: str) -> str:
         return text
 
     if content == "ERROR" or not content:
-        logger.warning(
-            f"Summary generation returned an error or empty content for: {text[:50]}..."
-        )
+        logger.warning(f"Summary generation returned an error or empty content for: {text[:50]}...")
         return text
 
     logger.info(f"Summary of text is {content}")
     cleaned_summary = await tools.clear_text(content)
 
-    await text_processing_cache_db.insert(
-        {"original_text": text, "processed_text": cleaned_summary, "type": "summary"}
-    )
+    await text_processing_cache_db.insert({"original_text": text, "processed_text": cleaned_summary, "type": "summary"})
     logger.info(f"Cached new summary for text: {text[:50]}...")
     return cleaned_summary
 
@@ -525,9 +494,7 @@ async def text_summary(text: str) -> str:
 async def text_sanitize(text: str) -> str:
     return text
     TextQuery = tinydb.Query()
-    cached_entry = await text_processing_cache_db.search(
-        (TextQuery.original_text == text) & (TextQuery.type == "sanitize")
-    )
+    cached_entry = await text_processing_cache_db.search((TextQuery.original_text == text) & (TextQuery.type == "sanitize"))
     if cached_entry:
         logger.info(f"Returning cached sanitized text for: {text[:50]}...")
         return cached_entry[0]["processed_text"]
@@ -548,9 +515,7 @@ async def text_sanitize(text: str) -> str:
         return text
 
     if content == "ERROR" or not content:
-        logger.warning(
-            f"Sanitization returned an error or empty content for: {text[:50]}..."
-        )
+        logger.warning(f"Sanitization returned an error or empty content for: {text[:50]}...")
         return text
 
     logger.info(f"Sanitize of text is {content}")
@@ -567,7 +532,7 @@ async def text_sanitize(text: str) -> str:
     return cleaned_sanitized_text
 
 
-async def get_summary(messages_list: list[dict]) -> str:
+async def get_summary(messages_list: tuple[list[dict], list[dict]]) -> str:
     messages = await message_history_to_xml(messages_list)
     if not messages:
         return ""
@@ -593,10 +558,8 @@ async def get_summary(messages_list: list[dict]) -> str:
     )
 
     response = await chat_completions_create(
-        messages=[
-            {"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}
-        ],
-        model=CHAT_MODEL  # type: ignore
+        messages=[{"role": "user", "content": f"{summarize_prompt_text}\n\n{messages}"}],
+        model=CHAT_MODEL,  # type: ignore
     )
     content = response.choices[0].message.content
     return content  # type: ignore
@@ -617,9 +580,7 @@ async def should_respond(
         personality_summary_desc = personality.get("summary", "A discord chat bot.")
 
     summary = await get_summary(messages)
-    summary_prompt = (
-        f'The summary of the conversations is "{summary}".\n' if summary else ""
-    )
+    summary_prompt = f'The summary of the conversations is "{summary}".\n' if summary else ""
 
     prompt_content = (
         f"{summary_prompt}The last message in the conversations was:\n"
@@ -632,11 +593,15 @@ async def should_respond(
         response = await chat_completions_create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]  # type: ignore
             + [{"role": "user", "content": prompt_content}],  # type: ignore
-            model=CHAT_MODEL  # type: ignore
+            model=CHAT_MODEL,  # type: ignore
         )
         content = response.choices[0].message.content
 
-        match = re.match(r"(?<=<RESPONSE.*?>).*?(?=</RESPONSE>)", content, flags=re.DOTALL | re.IGNORECASE)
+        match = re.match(
+            r"(?<=<RESPONSE.*?>).*?(?=</RESPONSE>)",
+            content or "",
+            flags=re.DOTALL | re.IGNORECASE,
+        )
         if match is not None:
             content = match.group(0)
 
@@ -657,35 +622,29 @@ async def send_response(
     messages: tuple[list[dict], list[dict]],
     message: discord.Message,
     personality: dict[str, str | list[dict[str, str]]] | None = None,
-) -> list[int]:
+) -> list[int] | None:
     if personality is None:
         current_personality = ""
     else:
-        current_personality = [
-            m
-            for m in personality.get("messages", [])
-            if isinstance(m, dict) and m.get("role", "") == "system"
-        ]
+        current_personality = [m for m in personality.get("messages", []) if isinstance(m, dict) and m.get("role", "") == "system"]
         if len(current_personality) == 0:
             current_personality = ""
         elif isinstance(current_personality[0], str):
-            current_personality = current_personality[0].get(
-                "content", "A discord chat bot."
-            )
+            current_personality = current_personality[0].get("content", "A discord chat bot.")
 
     to_send = await get_chat_response(messages, str(current_personality))
 
     if "content" not in to_send:
-        logger.error(f"send_response FAILURE PATH 1: 'content' key missing from AI response. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
+        logger.error(f"'content' key missing from AI response. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
         asyncio.create_task(message.clear_reactions())
-        return
+        return None
 
     message_response_raw = to_send["content"]
 
     if len(message_response_raw.strip()) == 0:
-        logger.error(f"send_response FAILURE PATH 2: 'content' key exists but is empty/whitespace. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
+        logger.error(f"'content' key exists but is empty/whitespace. Response: {to_send!r}. Returning None (will cause TypeError in caller).")
         asyncio.create_task(message.clear_reactions())
-        return
+        return None
 
     message_response_cleaned = await tools.clear_text(message_response_raw)
     message_response_final = await tools.remove_latex(message_response_cleaned)
@@ -693,9 +652,11 @@ async def send_response(
     message_response_split = await tools.smart_text_splitter(message_response_final)
 
     if not message_response_split or not message_response_split[0].strip():
-        logger.error(f"send_response FAILURE PATH 3: AI response was empty after processing. message_response_split={message_response_split!r}, message_response_final={message_response_final!r}. Returning None (will cause TypeError in caller).")
+        logger.error(
+            f"send_response FAILURE PATH 3: AI response was empty after processing. message_response_split={message_response_split!r}, message_response_final={message_response_final!r}. Returning None (will cause TypeError in caller)."
+        )
         asyncio.create_task(message.clear_reactions())
-        return
+        return None
 
     poll = None
     # if "poll" in to_send:
@@ -738,13 +699,11 @@ async def get_chat_response(
     personality: str,
 ) -> dict:
     if not messages:
-        logger.info(
-            "get_chat_response called with no messages, returning empty string."
-        )
+        logger.info("get_chat_response called with no messages, returning empty string.")
         return {}
 
     web_search_result = "<WEB_SEARCH>\n</WEB_SEARCH>"
-    if "content" in messages[0]:
+    if messages[0] and messages[0][0] and "content" in messages[0][0]:
         search_query = await chat_completions_create(
             messages=[
                 {"role": "system", "content": JAILBREAK_SYSTEM_PROMPT},
@@ -758,13 +717,13 @@ async def get_chat_response(
                     ```
 
                     Return the search query in xml tags called QUERY (e.g. <QUERY>Where do cows sleep at night?</QUERY>)
-                    """.strip()
-                }
+                    """.strip(),
+                },
             ]
         )
         word_count = 0
         web_search_result = "<WEB_SEARCH>\n"
-        for result in tools.web_search(messages[0].get("content")):
+        for result in tools.web_search(messages[0][0].get("content", "")):
             if word_count > 500:
                 continue
             word_count += len(result.split())
@@ -828,14 +787,10 @@ async def get_chat_response(
 
     logger.info(f"response: {content[:100]}")
 
-    re_content = re.findall(
-        r"<RESPONSE>.+?<\/RESPONSE>", content, flags=re.DOTALL | re.IGNORECASE
-    )
+    re_content = re.findall(r"<RESPONSE>.+?<\/RESPONSE>", content, flags=re.DOTALL | re.IGNORECASE)
     if not re_content:
         if "response: " in content.lower():
-            ret_content = re.sub(
-                r".?response:", "", content, flags=re.DOTALL | re.IGNORECASE
-            )
+            ret_content = re.sub(r".?response:", "", content, flags=re.DOTALL | re.IGNORECASE)
         else:
             return {}
     else:
@@ -845,9 +800,7 @@ async def get_chat_response(
         ret_content = ret_content.strip()
 
     poll_answers = []
-    re_answers = re.findall(
-        r"<ANSWER>.+?<\/ANSWER>", content, flags=re.DOTALL | re.IGNORECASE
-    )
+    re_answers = re.findall(r"<ANSWER>.+?<\/ANSWER>", content, flags=re.DOTALL | re.IGNORECASE)
 
     for poll_answer in re_answers:
         poll_answer = re.sub(r"^<ANSWER>", "", poll_answer, 1, flags=re.IGNORECASE)
@@ -855,16 +808,12 @@ async def get_chat_response(
         poll_answers.append(poll_answer.strip())
 
     multiple = False
-    re_multiple = re.findall(
-        r"<MULTIPLE>.+?<\/MULTIPLE>", content, flags=re.DOTALL | re.IGNORECASE
-    )
+    re_multiple = re.findall(r"<MULTIPLE>.+?<\/MULTIPLE>", content, flags=re.DOTALL | re.IGNORECASE)
     if re_multiple:
         multiple = True if "yes" in re_multiple[-1].lower() else False
 
     question = ""
-    re_question = re.findall(
-        r"<QUESTION>.+?<\/QUESTION>", content, flags=re.DOTALL | re.IGNORECASE
-    )
+    re_question = re.findall(r"<QUESTION>.+?<\/QUESTION>", content, flags=re.DOTALL | re.IGNORECASE)
     if re_question:
         question = re_question[-1]
         question = re.sub(r"^<QUESTION>", "", question, 1, flags=re.IGNORECASE)

@@ -13,11 +13,9 @@ import glin_profanity
 import requests
 import wikipedia
 import os
-import fastembed
+import difflib
 
 logger = logging.getLogger(__name__)
-
-SEARXNG_URL = os.environ.get("SIMPLE_CHAT_SEARXNG_URL", None)
 
 # https://stackoverflow.com/questions/70640701/python-logger-limit-string-size
 class NotTooLongStringFormatter(logging.Formatter):
@@ -46,9 +44,7 @@ class NotTooLongStringFormatter(logging.Formatter):
             **kwargs: Additional keyword arguments for the base Formatter class.
         """
         super().__init__(*args, **kwargs)
-        self.max_length = (
-            max_length if max_length is not None else self.DEFAULT_MAX_LENGTH
-        )
+        self.max_length = max_length if max_length is not None else self.DEFAULT_MAX_LENGTH
 
     def format(self, record: logging.LogRecord) -> str:
         """
@@ -126,10 +122,7 @@ async def smart_text_splitter(text: str, max_chunk_size: int = 2000) -> list[str
                 chunks.append(word[i : i + max_chunk_size])
             continue
 
-        if (
-            len(current_chunk) + len(word) + (1 if current_chunk else 0)
-            > max_chunk_size
-        ):
+        if len(current_chunk) + len(word) + (1 if current_chunk else 0) > max_chunk_size:
             if current_chunk:
                 chunks.append(current_chunk)
             current_chunk = word
@@ -149,7 +142,7 @@ async def remove_latex(text: str) -> str:
     """
     Removes LaTeX from a string and converts it to Unicode, wrapping it in asterisks.
 
-    Handles inline LaTeX ($...$) and display LaTeX ($$...$$ or \[...\]).
+    Handles inline LaTeX ($...$) and display LaTeX ($$...$$ or ````[...]```).
     Invalid LaTeX will be returned with an error marker.
 
     Args:
@@ -224,9 +217,7 @@ async def remove_latex(text: str) -> str:
                         final_segment_text = "\n" + final_segment_text + "\n"
                     result_parts.append(final_segment_text)
                 except Exception as e:
-                    logger.error(
-                        f"Failed to convert LaTeX: '{actual_latex_content}'. Error: {e}"
-                    )
+                    logger.error(f"Failed to convert LaTeX: '{actual_latex_content}'. Error: {e}")
                     result_parts.append(f"[LaTeX Error: {actual_latex_content}]")
             elif is_display_math:
                 result_parts.append("\n\n")
@@ -265,9 +256,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
     >>> asyncio.run(model_text_replace("find me", "find,replace,me,too"))
     'replace too'
     """
-    logger.info(
-        f"Attempting to replace text from model output. Input snippet: {text[:100]}..."
-    )
+    logger.info(f"Attempting to replace text from model output. Input snippet: {text[:100]}...")
 
     if not replace_str:
         return text
@@ -275,9 +264,7 @@ async def model_text_replace(text: str, replace_str: str) -> str:
     replace_list = replace_str.split(",")
 
     if len(replace_list) % 2 != 0:
-        logger.warning(
-            f"Replacement string '{replace_str}' has an odd number of elements. Skipping replacements."
-        )
+        logger.warning(f"Replacement string '{replace_str}' has an odd number of elements. Skipping replacements.")
         return text
 
     for i in range(0, len(replace_list), 2):
@@ -287,12 +274,13 @@ async def model_text_replace(text: str, replace_str: str) -> str:
             text = text.replace(text_to_find, text_to_replace_with)
     return text
 
+
 def profanity_chunker(words: list[str], prof_filter: glin_profanity.Filter) -> list[bool]:
     len_words = len(words)
     if len_words == 1:
         return [prof_filter.is_profane(words[0])]
     is_bad: list[bool] = []
-    half = len_words//2
+    half = len_words // 2
     if prof_filter.is_profane(" ".join(words[:half])):
         left_is_bad = profanity_chunker(words[:half], prof_filter)
         if all([not i for i in left_is_bad]):
@@ -301,7 +289,7 @@ def profanity_chunker(words: list[str], prof_filter: glin_profanity.Filter) -> l
             is_bad.extend(left_is_bad)
     else:
         is_bad.extend([False for _ in range(half)])
-    
+
     if prof_filter.is_profane(" ".join(words[half:])):
         right_is_bad = profanity_chunker(words[half:], prof_filter)
         if all([not i for i in right_is_bad]):
@@ -310,10 +298,11 @@ def profanity_chunker(words: list[str], prof_filter: glin_profanity.Filter) -> l
             is_bad.extend(right_is_bad)
     else:
         is_bad.extend([False for _ in range(len_words - half)])
-    
+
     assert len(is_bad) == len_words
 
     return is_bad
+
 
 async def clear_text(string: str) -> str:
     """
@@ -347,7 +336,7 @@ async def clear_text(string: str) -> str:
     words = string.split(" ")
     processed_words: list[str] = []
     prof_filter = glin_profanity.Filter()
-    
+
     is_bad = profanity_chunker(words, prof_filter)
 
     processed_words.append(words[0])
@@ -365,7 +354,7 @@ async def clear_text(string: str) -> str:
         processed_words[-1] = processed_words[-1].strip("|")
         if not is_bad[i - 1]:
             processed_words[-1] = f"||{processed_words[-1]}"
-        
+
         if not is_bad[i + 1]:
             processed_words[-1] = f"{processed_words[-1]}||"
 
@@ -394,6 +383,7 @@ PersonalitiesTuple = tuple[PersonalityDict, ...]
 
 # Initialize personalities as None to indicate it hasn't been loaded/set.
 personalities: PersonalitiesTuple | None = None
+last_time: float | None = None
 
 
 def non_async_get_personalties() -> PersonalitiesTuple:
@@ -414,23 +404,17 @@ def non_async_get_personalties() -> PersonalitiesTuple:
             data = ujson.load(file)
             systems = data.get("systems", [])
             if not isinstance(systems, list):
-                logger.error(
-                    f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list."
-                )
+                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list.")
                 return ()
             if not all(isinstance(item, dict) for item in systems):
-                logger.error(
-                    f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries."
-                )
+                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries.")
                 return ()
             return tuple(systems)
     except FileNotFoundError:
         logger.error(f"Personality file not found: {PERSONALITY_FILE_PATH}")
         return ()
     except (ujson.JSONDecodeError, KeyError) as e:
-        logger.error(
-            f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}"
-        )
+        logger.error(f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}")
         return ()
     except Exception as e:
         logger.error(f"Unexpected error reading personalities: {e}")
@@ -456,27 +440,22 @@ async def get_personalties() -> PersonalitiesTuple:
             data = ujson.loads(content)
             systems = data.get("systems", [])
             if not isinstance(systems, list):
-                logger.error(
-                    f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list."
-                )
+                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: 'systems' is not a list.")
                 return ()
             if not all(isinstance(item, dict) for item in systems):
-                logger.error(
-                    f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries."
-                )
+                logger.error(f"Invalid format in {PERSONALITY_FILE_PATH}: Not all items in 'systems' are dictionaries.")
                 return ()
             return tuple(systems)
     except FileNotFoundError:
         logger.error(f"Personality file not found: {PERSONALITY_FILE_PATH}")
         return ()
     except (ujson.JSONDecodeError, KeyError) as e:
-        logger.error(
-            f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}"
-        )
+        logger.error(f"Error decoding JSON or key error in {PERSONALITY_FILE_PATH}: {e}")
         return ()
     except Exception as e:
         logger.error(f"Unexpected error reading personalities async: {e}")
         return ()
+
 
 async def get_personality(k: int = 6) -> PersonalitiesTuple:
     """
@@ -499,15 +478,14 @@ async def get_personality(k: int = 6) -> PersonalitiesTuple:
     global personalities
     global last_time
 
-    if "last_time" in globals() and time.time()//3600 == last_time//3600 and "personalities" in globals():
+    current_hour = time.time() // 3600
+    if last_time is not None and current_hour == last_time // 3600 and personalities is not None:
         return personalities
     last_time = time.time()
 
     available_personalities = await get_personalties()
     if not available_personalities:
-        logger.warning(
-            "No personalities available from file to update the current set."
-        )
+        logger.warning("No personalities available from file to update the current set.")
         if personalities is None:
             personalities = ()
         return personalities
@@ -526,9 +504,7 @@ async def get_personality(k: int = 6) -> PersonalitiesTuple:
         new_selection = current_list[1:]
 
         if k > 0:
-            choices_for_new = [
-                p for p in available_personalities if p not in new_selection
-            ]
+            choices_for_new = [p for p in available_personalities if p not in new_selection]
             if not choices_for_new:
                 choices_for_new = available_personalities
 
@@ -543,9 +519,7 @@ async def get_personality(k: int = 6) -> PersonalitiesTuple:
 
     if personalities:
         first_personality_name = personalities[0].get("user_name", "Unknown")
-        logger.info(
-            f"Updated personalities. Current primary: {first_personality_name}. Count: {len(personalities)}"
-        )
+        logger.info(f"Updated personalities. Current primary: {first_personality_name}. Count: {len(personalities)}")
     else:
         logger.info("Personalities list is empty after update attempt.")
 
@@ -557,16 +531,14 @@ async def get_personality(k: int = 6) -> PersonalitiesTuple:
 
     return personalities
 
+
 def web_search(query: str) -> list[str]:
     logger.info("Searching web")
     results = []
     try:
-        params = {
-            "q": query,
-            "format": "json"
-        }
-
-        response = requests.get(f"{SEARXNG_URL}/search", params=params)
+        params = {"q": query, "format": "json"}
+        searxng_url = os.environ.get("SIMPLE_CHAT_SEARXNG_URL", None)
+        response = requests.get(f"{searxng_url}/search", params=params)
         data = response.json()
         for result in data.get("results", []):
             formated_result = ""
@@ -580,22 +552,31 @@ def web_search(query: str) -> list[str]:
         logger.error(f"searxng failed with {e}")
 
     if len(results) == 0:
-        search, suggest = wikipedia.search(query, suggestion=True)
-        if type(suggest) is list:
-            search += suggest
-        for result in search:
-            try:
-                results.append(wikipedia.summary(result))
-            except Exception as e:
-                logger.error(f"wikipedia failed with {e}")
+        try:
+            search, suggest = wikipedia.search(query, suggestion=True)
+            if type(suggest) is list:
+                search += suggest
+            for result in search:
+                try:
+                    results.append(wikipedia.summary(result))
+                except Exception as e:
+                    logger.error(f"wikipedia failed with {e}")
+        except Exception as e:
+            logger.error(f"wikipedia failed with {e}")
     logger.info(f"Found {len(results)} results")
 
-    rerank_model = fastembed.rerank.cross_encoder.TextCrossEncoder(
-        "Xenova/ms-marco-MiniLM-L-6-v2"
-    )
+    if len(results) < 2:
+        return results
 
-    ranked = zip(rerank_model.rerank(
-        query,
-        results
-    ), results)
-    return [r for s, r in sorted(ranked, key=lambda x: x[0], reverse=True)]
+    try:
+        import fastembed
+
+        rerank_model = fastembed.rerank.cross_encoder.TextCrossEncoder("Xenova/ms-marco-MiniLM-L-6-v2")  # type: ignore
+    except Exception:
+        rerank_model = None  # type: ignore
+
+    if rerank_model is not None:
+        ranked = zip(rerank_model.rerank(query, results), results)
+    else:
+        ranked = zip([difflib.SequenceMatcher(lambda x: x == " ", query, r).ratio() for r in results], results)
+    return [r for _, r in sorted(ranked, key=lambda x: x[0], reverse=True)]
