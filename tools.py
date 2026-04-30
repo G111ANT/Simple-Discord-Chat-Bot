@@ -395,13 +395,14 @@ async def get_personality(k: int = 6) -> PersonalitiesTuple:
     return personalities
 
 
-def web_search(query: str) -> list[str]:
+def _web_search_sync(query: str) -> list[str]:
+    """Synchronous implementation of web search. Call via web_search() from async code."""
     logger.info("Searching web")
     results = []
     try:
         params = {"q": query, "format": "json"}
         searxng_url = os.environ.get("SIMPLE_CHAT_SEARXNG_URL", None)
-        response = requests.get(f"{searxng_url}/search", params=params)
+        response = requests.get(f"{searxng_url}/search", params=params, timeout=15)
         data = response.json()
         for result in data.get("results", []):
             formated_result = ""
@@ -443,3 +444,10 @@ def web_search(query: str) -> list[str]:
     else:
         ranked = zip([difflib.SequenceMatcher(lambda x: x == " ", query, r).ratio() for r in results], results)
     return [r for _, r in sorted(ranked, key=lambda x: x[0], reverse=True)]
+
+
+async def web_search(query: str) -> list[str]:
+    """Async wrapper for web search that runs blocking I/O in a thread executor."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _web_search_sync, query)

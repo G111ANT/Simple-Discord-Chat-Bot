@@ -384,22 +384,23 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             await aiofiles.os.remove(filepath)
         return ""
 
+    img_hash_str = str(img_hash) if img_hash is not None else None
+
     search_results = (
-        await image_db.search(tinydb.Query().img_hash == img_hash) if img_hash else []  # type: ignore
+        await image_db.search(tinydb.Query().img_hash == img_hash_str) if img_hash_str else []  # type: ignore
     )
 
     if isinstance(search_results, str):
         logger.warning(f"Unexpected string result from database search: {search_results}")
         search_results = []
 
-    if search_results and search_results.get("description"): # type: ignore
-        logger.info(f"Found cached description for image {url} (hash: {img_hash})")
-        return search_results.get("description", "") # type: ignore
+    if search_results and search_results[0].get("description"):  # type: ignore
+        logger.info(f"Found cached description for image {url} (hash: {img_hash_str})")
+        return search_results[0].get("description", "")  # type: ignore
 
-    logger.info(f"No cache found for image {url} (hash: {img_hash}). Requesting AI description.")
+    logger.info(f"No cache found for image {url} (hash: {img_hash_str}). Requesting AI description.")
 
     try:
-        raise
         description_response = await chat_completions_create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
             + [
@@ -463,8 +464,8 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     description_content = re.sub(r"</?.*?>", " ", description_content)
 
     if len(description_content) > 0:
-        await image_db.insert({"description": description_content, "img_hash": img_hash})
-        logger.info(f"Cached new description for image {url} (hash: {img_hash})")
+        await image_db.insert({"description": description_content, "img_hash": img_hash_str})
+        logger.info(f"Cached new description for image {url} (hash: {img_hash_str})")
 
     if await aiofiles.os.path.exists(filepath):
         await aiofiles.os.remove(filepath)
@@ -659,14 +660,14 @@ async def get_chat_response(
             content = search_response.choices[0].message.content
             assert type(content) is str
             re_content = re.findall(r"<QUERY>.+?<\/QUERY>", content, flags=re.DOTALL | re.IGNORECASE)
-            if not re_content:
+            if re_content:
                 search_query = re_content[-1]
         except Exception as e:
             logger.error(f"OpenAI API call for get_chat_response query failed: {e}")
 
         word_count = 0
         web_search_result = "<WEB_SEARCH>\n"
-        for result in tools.web_search(search_query):
+        for result in await tools.web_search(search_query):
             if word_count > 500:
                 continue
             word_count += len(result.split())

@@ -64,14 +64,8 @@ if __name__ == "__main__":
     discord_intents.message_content = True
     discord_intents.messages = True
 
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError as e:
-        if str(e).startswith("There is no current event loop in thread"):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        else:
-            raise
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     profile_picture = ""
 
