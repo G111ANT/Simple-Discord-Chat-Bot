@@ -17,8 +17,10 @@ from aiocache import cached
 from dotenv import load_dotenv
 from openai import AsyncClient
 from PIL import Image
-import easyocr
+from doctr.models import ocr_predictor
+from doctr.io import DocumentFile
 import tools
+import io
 
 # from better_profanity import profanity
 import gc
@@ -337,10 +339,7 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
     extension = f".{match.group(1)}" if match else ".tmp"
 
     hashed_url = str(hash(url))
-    original_filename = f"{hashed_url}{extension}"
-    original_filepath = os.path.join(tmp_dir, original_filename)
-    resized_filename = f"{hashed_url}-resize.jpeg"
-    resized_filepath = os.path.join(tmp_dir, resized_filename)
+    filepath = os.path.join(tmp_dir, f"{hashed_url}{extension}")
 
     img_hash = None
     base64_image = None
@@ -355,51 +354,52 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         )
         response.raise_for_status()
 
-        async with aiofiles.open(original_filepath, "wb") as file:
+        async with aiofiles.open(filepath, "wb") as file:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     await file.write(chunk)
 
-        with Image.open(original_filepath) as img:
-            # new_img = img.resize((256, 256)).convert("RGB")
-            new_img = img.convert("RGB")
-            img_hash = str(imagehash.average_hash(new_img))
-            new_img.save(resized_filepath, "JPEG")
-
-        async with aiofiles.open(resized_filepath, "rb") as file:
-            base64_image = base64.b64encode(await file.read()).decode("utf-8")
+        async with aiofiles.open(filepath, "rb") as file:
+            file_content = await file.read()
+            base64_image = base64.b64encode(file_content).decode("utf-8")
+            im = Image.open(io.BytesIO(file_content))
+            img_hash = imagehash.whash(im)
+            im.close()
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Request for image {url} failed: {e}")
+        if await aiofiles.os.path.exists(filepath):
+            await aiofiles.os.remove(filepath)
         return ""
+
     except PIL.UnidentifiedImageError:
-        logger.error(f"Could not open or read image file from {url} (downloaded to {original_filepath})")
+        logger.error(f"Could not open or read image file from {url} (downloaded to {filepath})")
+        if await aiofiles.os.path.exists(filepath):
+            await aiofiles.os.remove(filepath)
         return ""
+
     except Exception as e:
         logger.error(f"Error processing image {url}: {e}")
-        return ""
-    finally:
-        for f_path in [original_filepath, resized_filepath]:
-            if await aiofiles.os.path.exists(f_path):
-                try:
-                    await aiofiles.os.remove(f_path)
-                except Exception as e:
-                    logger.error(f"Failed to remove temporary file {f_path}: {e}")
-
-    if not img_hash or not base64_image:
-        logger.warning(f"Image hash or base64 data not generated for {url}")
+        if await aiofiles.os.path.exists(filepath):
+            await aiofiles.os.remove(filepath)
         return ""
 
     search_results = (
-        await image_db.search(tinydb.Query().hash == img_hash) if img_hash else []  # type: ignore
+        await image_db.search(tinydb.Query().img_hash == img_hash) if img_hash else []  # type: ignore
     )
-    if search_results:
+
+    if isinstance(search_results, str):
+        logger.warning(f"Unexpected string result from database search: {search_results}")
+        search_results = []
+
+    if search_results and search_results.get("description"): # type: ignore
         logger.info(f"Found cached description for image {url} (hash: {img_hash})")
-        return search_results[0].get("description", "")
+        return search_results.get("description", "") # type: ignore
 
     logger.info(f"No cache found for image {url} (hash: {img_hash}). Requesting AI description.")
-    client = _get_openai_client()
+
     try:
+        raise
         description_response = await chat_completions_create(
             messages=[{"role": "system", "content": JAILBREAK_SYSTEM_PROMPT}]
             + [
@@ -420,7 +420,6 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
             model=CHAT_MODEL,  # type: ignore
         )
         description_content = description_response.choices[0].message.content
-        print(description_content)
 
         match = re.search(
             r"<DESCRIPTION.*?>(.*?)</DESCRIPTION>",
@@ -436,19 +435,39 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
 
     if not description_content:
         try:
-            reader = easyocr.Reader(["en"])
-            result = reader.readtext(resized_filepath, detail=0)  # type: ignore
-            return "\n\n".join(result)  # type: ignore
+            model = ocr_predictor(det_arch="db_mobilenet_v3_large", reco_arch="crnn_mobilenet_v3_small", pretrained=True)
+            doc = DocumentFile.from_images(filepath)
+            result = model(doc)
+            result_export = result.export()
+            del model
+            result_text = ""
+            if isinstance(result_export, dict):
+                result_raw = []
+                for page in result_export.get("pages", []):
+                    page_lines = []
+                    for block in page.get("blocks", []):
+                        for line in block.get("lines", []):
+                            line_text = " ".join(word.get("value", "") for word in line.get("words", [])).strip()
+                            if line_text:
+                                page_lines.append(line_text)
+                    if page_lines:
+                        result_raw.append(page_lines)
+                result_text = "\n\n---\n\n".join(["\n".join(p) for p in result_raw])
+            description_content = result_text  # type: ignore
         except Exception as e:
-            logger.error(f"Easyocr error for {url}: {e}")
-            return ""
+            logger.error(f"ocr error for {url}: {e}")
+            description_content = ""
 
-    description_content = "".join(filter(lambda x: x.isalnum() or x.isspace() or x == "'", list(description_content))).strip()
-    description_content = re.sub(r"\s+", " ", description_content)
+    # description_content = "".join(filter(lambda x: x.isalnum() or x.isspace() or x == "'", list(description_content))).strip()
+    # description_content = re.sub(r"\s+", " ", description_content)
+    description_content = re.sub(r"</?.*?>", " ", description_content)
 
-    if img_hash and description_content:
-        await image_db.insert({"description": description_content, "hash": img_hash})
+    if len(description_content) > 0:
+        await image_db.insert({"description": description_content, "img_hash": img_hash})
         logger.info(f"Cached new description for image {url} (hash: {img_hash})")
+
+    if await aiofiles.os.path.exists(filepath):
+        await aiofiles.os.remove(filepath)
 
     return description_content + "\u200e"
 
