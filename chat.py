@@ -17,8 +17,8 @@ from aiocache import cached
 from dotenv import load_dotenv
 from openai import AsyncClient
 from PIL import Image
-from doctr.models import ocr_predictor
-from doctr.io import DocumentFile
+# from doctr.models import ocr_predictor
+# from doctr.io import DocumentFile
 import tools
 import io
 
@@ -434,31 +434,33 @@ async def image_describe(url: str, image_db: tinydb.TinyDB) -> str:
         logger.error(f"OpenAI API call for image description for {url} failed: {e}")
         description_content = None
 
-    if not description_content:
-        try:
-            model = ocr_predictor(det_arch="db_mobilenet_v3_large", reco_arch="crnn_mobilenet_v3_small", pretrained=True)
-            doc = DocumentFile.from_images(filepath)
-            result = model(doc)
-            result_export = result.export()
-            del model
-            result_text = ""
-            if isinstance(result_export, dict):
-                result_raw = []
-                for page in result_export.get("pages", []):
-                    page_lines = []
-                    for block in page.get("blocks", []):
-                        for line in block.get("lines", []):
-                            line_text = " ".join(word.get("value", "") for word in line.get("words", [])).strip()
-                            if line_text:
-                                page_lines.append(line_text)
-                    if page_lines:
-                        result_raw.append(page_lines)
-                result_text = "\n\n---\n\n".join(["\n".join(p) for p in result_raw])
-            description_content = result_text  # type: ignore
-        except Exception as e:
-            logger.error(f"ocr error for {url}: {e}")
-            description_content = ""
+    # if not description_content:
+    #     try:
+    #         model = ocr_predictor(det_arch="db_mobilenet_v3_large", reco_arch="viptr_tiny", pretrained=True)
+    #         doc = DocumentFile.from_images(filepath)
+    #         result = model(doc)
+    #         result_export = result.export()
+    #         del model
+    #         result_text = ""
+    #         if isinstance(result_export, dict):
+    #             result_raw = []
+    #             for page in result_export.get("pages", []):
+    #                 page_lines = []
+    #                 for block in page.get("blocks", []):
+    #                     for line in block.get("lines", []):
+    #                         line_text = " ".join(word.get("value", "") for word in line.get("words", [])).strip()
+    #                         if line_text:
+    #                             page_lines.append(line_text)
+    #                 if page_lines:
+    #                     result_raw.append(page_lines)
+    #             result_text = "\n\n---\n\n".join(["\n".join(p) for p in result_raw])
+    #         description_content = result_text  # type: ignore
+    #     except Exception as e:
+    #         logger.error(f"ocr error for {url}: {e}")
+    #         description_content = ""
 
+    if not description_content:
+        return ""
     # description_content = "".join(filter(lambda x: x.isalnum() or x.isspace() or x == "'", list(description_content))).strip()
     # description_content = re.sub(r"\s+", " ", description_content)
     description_content = re.sub(r"</?.*?>", " ", description_content)
